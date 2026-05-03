@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- ===== SEO BASICS ===== -->
+<title>Brypo — Bring Your Proof Out</title>
+<meta name="description" content="Brypo turns scattered founder evidence — screenshots, Slack threads, demo recordings, meeting notes — into investor updates, hiring posts, customer cases, X threads, and internal docs. One source. Multiple audiences.">
+<meta name="keywords" content="Brypo, founder tool, build in public, evidence to content, stakeholder communication, investor update tool, content multiplication, indie hackers">
+<meta name="author" content="Brypo">
+<link rel="canonical" href="https://brypo.com/">
+<meta name="robots" content="index, follow">
+
+<!-- ===== OPEN GRAPH ===== -->
+<meta property="og:title" content="Brypo — Bring Your Proof Out">
+<meta property="og:description" content="One drop in. Five stories out. Brypo turns founder evidence into investor updates, hiring posts, customer cases, X threads, and internal docs.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://brypo.com/">
+<meta property="og:image" content="https://brypo.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Brypo">
+<meta property="og:locale" content="en_US">
+
+<!-- ===== TWITTER CARD ===== -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Brypo — Bring Your Proof Out">
+<meta name="twitter:description" content="One drop in. Five stories out. Founder evidence to stakeholder formats.">
+<meta name="twitter:image" content="https://brypo.com/og-image.png">
+<meta name="twitter:site" content="@brypoai">
+<meta name="twitter:creator" content="@brypoai">
+
+<!-- ===== SCHEMA.ORG ===== -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Brypo",
+  "alternateName": ["Brypo (Bring Your Proof Out)"],
+  "description": "AI tool that turns scattered founder evidence into stakeholder-specific formats: investor updates, hiring posts, customer cases, X threads, and internal docs.",
+  "url": "https://brypo.com",
+  "logo": "https://brypo.com/favicon.svg",
+  "foundingDate": "2026",
+  "sameAs": [
+    "https://x.com/brypoai",
+    "https://github.com/brypoai"
+  ]
+}
+</script>
+
+<!-- ===== FAVICON ===== -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0a0f">
+
+<!-- ===== FONTS ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg-soft: #14141c;
+  --fg: #f5f5f0;
+  --fg-soft: #b8b8b0;
+  --muted: #6b6b75;
+  --accent: #e8553b;
+  --accent-dim: #b13d28;
+  --line: #1f1f2a;
+  --max: 880px;
+
+  --font-display: 'Fraunces', 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+::selection { background: var(--accent); color: var(--bg); }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== Grain texture overlay ===== */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(232, 85, 59, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(232, 85, 59, 0.03) 0%, transparent 40%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.96 0 0 0 0 0.94 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 2;
+  mix-blend-mode: overlay;
+}
+
+main {
+  position: relative;
+  z-index: 3;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: clamp(2rem, 8vw, 5rem) clamp(1.5rem, 5vw, 3rem);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Header ===== */
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: clamp(4rem, 10vw, 8rem);
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.top .badge {
+  font-family: var(--font-mono);
+  font-weight: 500;
+}
+
+.top .badge-accent {
+  color: var(--accent);
+}
+
+.top .blink {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--accent);
+  border-radius: 50%;
+  margin-right: 0.5em;
+  animation: pulse 2s ease-in-out infinite;
+  vertical-align: middle;
+  position: relative;
+  top: -1px;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ===== Brand mark ===== */
+.brand {
+  font-family: var(--font-display);
+  font-size: clamp(5rem, 18vw, 11rem);
+  font-weight: 900;
+  line-height: 0.85;
+  letter-spacing: -0.06em;
+  color: var(--fg);
+  margin-bottom: 0.5rem;
+  font-variation-settings: "opsz" 144;
+  position: relative;
+}
+
+.brand .stroke {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--accent);
+  font-variation-settings: "opsz" 144;
+}
+
+.brand-aside {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: clamp(2rem, 5vw, 3rem);
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75em;
+}
+
+.brand-aside::before {
+  content: '↳';
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.brand-aside .crossed {
+  text-decoration: line-through;
+  color: var(--muted);
+  opacity: 0.5;
+  margin-right: 0.4em;
+}
+
+/* ===== Tagline ===== */
+.tagline {
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 3.2vw, 2rem);
+  font-weight: 300;
+  line-height: 1.3;
+  color: var(--fg-soft);
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+  letter-spacing: -0.015em;
+  max-width: 22ch;
+  font-variation-settings: "opsz" 60;
+}
+
+.tagline em {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--fg);
+}
+
+/* ===== Description ===== */
+.body-text {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--fg-soft);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+  max-width: 56ch;
+}
+
+.body-text strong {
+  color: var(--fg);
+  font-weight: 500;
+}
+
+/* ===== Format chips ===== */
+.formats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: clamp(2.5rem, 5vw, 4rem);
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0.4em 0.85em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--fg-soft);
+  letter-spacing: 0.01em;
+  transition: all 0.2s ease;
+}
+
+.chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ===== Form ===== */
+.waitlist {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: clamp(3rem, 6vw, 5rem);
+  max-width: 540px;
+}
+
+.waitlist input {
+  flex: 1;
+  min-width: 220px;
+  padding: 0.95rem 1.1rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  transition: border-color 0.2s ease;
+}
+
+.waitlist input::placeholder {
+  color: var(--muted);
+}
+
+.waitlist input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.waitlist button {
+  padding: 0.95rem 1.4rem;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.waitlist button:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+}
+
+.waitlist button:active {
+  transform: translateY(1px);
+}
+
+/* ===== Origin (about the name) ===== */
+.origin {
+  border-top: 1px solid var(--line);
+  padding-top: clamp(1.5rem, 3vw, 2rem);
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.75;
+  color: var(--fg-soft);
+  max-width: 60ch;
+}
+
+.origin h3 {
+  font-family: var(--font-display);
+  font-size: 18px;
+  font-style: italic;
+  font-weight: 500;
+  color: var(--fg);
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.origin code {
+  font-family: var(--font-mono);
+  background: var(--bg-soft);
+  padding: 0.15em 0.4em;
+  border-radius: 3px;
+  font-size: 0.9em;
+  color: var(--accent);
+}
+
+/* ===== Footer ===== */
+footer {
+  margin-top: auto;
+  padding-top: clamp(3rem, 6vw, 5rem);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+footer .links {
+  display: flex;
+  gap: 1.5rem;
+}
+
+footer a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+footer a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+footer .copyright {
+  text-transform: uppercase;
+}
+
+/* ===== Stagger reveal ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: reveal 0.7s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+
+.reveal:nth-child(1) { animation-delay: 0.05s; }
+.reveal:nth-child(2) { animation-delay: 0.15s; }
+.reveal:nth-child(3) { animation-delay: 0.25s; }
+.reveal:nth-child(4) { animation-delay: 0.35s; }
+.reveal:nth-child(5) { animation-delay: 0.45s; }
+.reveal:nth-child(6) { animation-delay: 0.55s; }
+.reveal:nth-child(7) { animation-delay: 0.65s; }
+
+@keyframes reveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== Mobile ===== */
+@media (max-width: 600px) {
+  .top { font-size: 11px; }
+  .top .badge:last-child { display: none; }
+  .brand { letter-spacing: -0.05em; }
+  .body-text { font-size: 13.5px; }
+  .formats { gap: 0.4rem; }
+  .chip { font-size: 11px; padding: 0.35em 0.7em; }
+  footer { font-size: 11px; gap: 0.75rem; }
+  footer .links { gap: 1rem; }
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; animation: none; }
+  .blink { animation: none; }
+  * { transition: none !important; }
+}
+</style>
+
+<!-- Tally widget for Popup waitlist form -->
+<script async src="https://tally.so/widgets/embed.js"></script>
+</head>
+
+<body>
+<main>
+
+  <!-- Header -->
+  <header class="top reveal">
+    <span class="badge"><span class="blink"></span>Coming soon · 2026</span>
+    <span class="badge badge-accent">Building in public</span>
+  </header>
+
+  <!-- Brand -->
+  <h1 class="brand reveal">Brypo<span class="stroke">.</span></h1>
+
+  <!-- Aside disambiguation -->
+  <p class="brand-aside reveal">
+    <span><span class="crossed">crypto</span>not crypto.</span>
+  </p>
+
+  <!-- Tagline -->
+  <p class="tagline reveal">
+    <em>Bring Your Proof Out.</em><br>
+    One source, five stories.
+  </p>
+
+  <!-- Body -->
+  <p class="body-text reveal">
+    Founders sit on <strong>proof of progress</strong> every day —
+    screenshots, Slack threads, demo recordings, meeting notes —
+    but it never reaches the people who need to see it.
+    <br><br>
+    Brypo turns that scattered evidence into investor updates,
+    hiring posts, customer cases, X threads, and internal docs.
+    Same source. Different audiences. Different formats.
+  </p>
+
+  <!-- Format chips -->
+  <div class="formats reveal" aria-label="Output formats">
+    <span class="chip">→ Investor update</span>
+    <span class="chip">→ Hiring post</span>
+    <span class="chip">→ Customer case</span>
+    <span class="chip">→ X thread</span>
+    <span class="chip">→ Internal doc</span>
+  </div>
+
+  <!-- Waitlist (Tally Popup) -->
+  <!-- Clicking the button opens form ID dWQlbq as a modal popup -->
+  <div class="waitlist reveal">
+    <button
+      type="button"
+      data-tally-open="dWQlbq"
+      data-tally-layout="modal"
+      data-tally-width="500"
+      data-tally-overlay="1"
+      data-tally-emoji-text="👋"
+      data-tally-emoji-animation="wave"
+      aria-label="Open waitlist form">Join waitlist →</button>
+  </div>
+
+  <!-- Origin -->
+  <section class="origin reveal">
+    <h3>About the name</h3>
+    <p>
+      <code>Brypo</code> stands for <strong>Bring Your Proof Out</strong>.
+      It's a reminder that the daily work of building — the receipts, the
+      screenshots, the late-night Slack messages — is the most underused
+      asset a founder has. Brypo brings it out, in the format each
+      stakeholder actually wants to read.
+    </p>
+  </section>
+
+  <!-- Footer -->
+  <footer class="reveal">
+    <span class="copyright">© 2026 Brypo</span>
+    <nav class="links">
+      <a href="https://x.com/brypoai" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/brypoai" target="_blank" rel="noopener">GitHub</a>
+      <a href="mailto:hello@brypo.com">hello@</a>
+    </nav>
+  </footer>
+
+</main>
+</body>
+</html>

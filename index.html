@@ -6,7 +6,7 @@
 
 <!-- ===== SEO BASICS ===== -->
 <title>Brypo — Bring Your Proof Out</title>
-<meta name="description" content="Brypo turns scattered founder evidence — screenshots, Slack threads, demo recordings, meeting notes — into investor updates, hiring posts, customer cases, X threads, and internal docs. Same facts. Five voices.">
+<meta name="description" content="You shipped this week. You'll write about it 5 times — investor update, hiring post, customer case, X thread, internal doc. Brypo does it once.">
 <meta name="keywords" content="Brypo, founder tool, build in public, evidence to content, stakeholder communication, investor update tool, content multiplication, indie hackers">
 <meta name="author" content="Brypo">
 <link rel="canonical" href="https://brypo.com/">
@@ -14,7 +14,7 @@
 
 <!-- ===== OPEN GRAPH ===== -->
 <meta property="og:title" content="Brypo — Bring Your Proof Out">
-<meta property="og:description" content="Same facts. Five voices. Brypo turns founder evidence into investor updates, hiring posts, customer cases, X threads, and internal docs.">
+<meta property="og:description" content="You shipped this week. You'll write about it 5 times. Brypo does it once.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://brypo.com/">
 <meta property="og:image" content="https://brypo.com/og-image.png">
@@ -26,7 +26,7 @@
 <!-- ===== TWITTER CARD ===== -->
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Brypo — Bring Your Proof Out">
-<meta name="twitter:description" content="Same facts. Five voices. Founder evidence to stakeholder formats.">
+<meta name="twitter:description" content="You shipped this week. You'll write about it 5 times. Brypo does it once.">
 <meta name="twitter:image" content="https://brypo.com/og-image.png">
 <meta name="twitter:site" content="@brypoai">
 <meta name="twitter:creator" content="@brypoai">
@@ -61,6 +61,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- ===== TALLY EMBED ===== -->
+<script async src="https://tally.so/widgets/embed.js"></script>
 
 <style>
 :root {
@@ -272,13 +275,112 @@ main {
   color: var(--accent);
 }
 
-/* ===== Form ===== */
+/* ===== Hero hook (you-focused) ===== */
+.hero-hook {
+  font-family: var(--font-display);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--fg);
+  margin-bottom: clamp(2rem, 4vw, 2.8rem);
+  letter-spacing: -0.02em;
+  max-width: 22ch;
+  font-variation-settings: "opsz" 80;
+}
+
+.hero-hook .hook-secondary {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--fg-soft);
+}
+
+/* ===== Proof grid (dogfood) ===== */
+.proof-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  column-gap: clamp(0.75rem, 2.5vw, 1.5rem);
+  row-gap: 0.55rem;
+  align-items: baseline;
+  margin-bottom: clamp(2.2rem, 5vw, 3rem);
+  padding: clamp(1.2rem, 3vw, 1.8rem) clamp(1rem, 2.5vw, 1.6rem);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-soft);
+  max-width: 620px;
+}
+
+.proof-quote {
+  color: var(--fg);
+  font-family: var(--font-display);
+  font-size: clamp(13px, 1.4vw, 15px);
+  font-style: italic;
+  font-weight: 500;
+  font-variation-settings: "opsz" 32;
+  letter-spacing: -0.005em;
+}
+
+.proof-arrow {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  opacity: 0.7;
+  user-select: none;
+}
+
+.proof-label {
+  color: var(--fg-soft);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  white-space: nowrap;
+}
+
+/* ===== Hero closing ===== */
+.hero-closing {
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2vw, 1.25rem);
+  font-weight: 400;
+  line-height: 1.45;
+  color: var(--fg-soft);
+  margin-bottom: clamp(2rem, 4vw, 2.8rem);
+  letter-spacing: -0.01em;
+  font-variation-settings: "opsz" 60;
+}
+
+.hero-closing strong {
+  color: var(--fg);
+  font-weight: 700;
+  font-style: italic;
+}
+
+@media (max-width: 600px) {
+  .proof-grid {
+    grid-template-columns: 1fr;
+    row-gap: 0.3rem;
+    padding: 1.1rem 1rem;
+  }
+  .proof-arrow { display: none; }
+  .proof-label {
+    font-size: 9.5px;
+    margin-bottom: 0.6rem;
+    color: var(--accent);
+    opacity: 0.85;
+  }
+  .proof-quote {
+    font-size: 14px;
+  }
+}
+
+/* ===== Form / CTA ===== */
 .waitlist {
   display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 0.85rem;
   margin-bottom: clamp(3rem, 6vw, 5rem);
   max-width: 540px;
+  align-items: flex-start;
 }
 
 .waitlist input {
@@ -304,28 +406,41 @@ main {
   border-color: var(--accent);
 }
 
-.waitlist button {
-  padding: 0.95rem 1.4rem;
+.waitlist button,
+.waitlist-cta {
+  padding: 1.05rem 1.6rem;
   background: var(--accent);
   color: var(--bg);
   border: 1px solid var(--accent);
   border-radius: 4px;
   font-family: var(--font-mono);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0.04em;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   cursor: pointer;
   transition: all 0.2s ease;
+  display: inline-block;
 }
 
-.waitlist button:hover {
+.waitlist button:hover,
+.waitlist-cta:hover {
   background: var(--accent-dim);
   border-color: var(--accent-dim);
+  transform: translateY(-1px);
 }
 
-.waitlist button:active {
+.waitlist button:active,
+.waitlist-cta:active {
   transform: translateY(1px);
+}
+
+.waitlist-meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  margin: 0;
 }
 
 /* ===== Origin (about the name) ===== */
@@ -434,9 +549,6 @@ footer .copyright {
   * { transition: none !important; }
 }
 </style>
-
-<!-- Tally widget for Popup waitlist form -->
-<script async src="https://tally.so/widgets/embed.js"></script>
 </head>
 
 <body>
@@ -456,44 +568,57 @@ footer .copyright {
     <span><span class="crossed">crypto</span>not crypto.</span>
   </p>
 
-  <!-- Tagline -->
-  <p class="tagline reveal">
-    <em>Bring Your Proof Out.</em><br>
-    Same facts. Five voices.
-  </p>
+  <!-- Hero hook (you-focused, replaces tagline) -->
+  <h2 class="hero-hook reveal">
+    You shipped this week.<br>
+    <span class="hook-secondary">You'll write about it 5 times.</span>
+  </h2>
 
-  <!-- Body -->
-  <p class="body-text reveal">
-    Founders sit on <strong>proof of progress</strong> every day —
-    screenshots, Slack threads, demo recordings, meeting notes —
-    but it never reaches the people who need to see it.
-    <br><br>
-    Brypo turns that scattered evidence into investor updates,
-    hiring posts, customer cases, X threads, and internal docs.
-    Same source. Different audiences. Different formats.
-  </p>
+  <!-- Proof grid: dogfood quotes mapped to stakeholder formats -->
+  <div class="proof-grid reveal" aria-label="Same week, five formats">
+    <span class="proof-quote">&ldquo;Hosting $400 &rarr; $200/yr.&rdquo;</span>
+    <span class="proof-arrow">&rarr;</span>
+    <span class="proof-label">Investor update</span>
 
-  <!-- Format chips -->
-  <div class="formats reveal" aria-label="Output formats">
-    <span class="chip">→ Investor update</span>
-    <span class="chip">→ Hiring post</span>
-    <span class="chip">→ Customer case</span>
-    <span class="chip">→ X thread</span>
-    <span class="chip">→ Internal doc</span>
+    <span class="proof-quote">&ldquo;Self-hosted infra in 6h.&rdquo;</span>
+    <span class="proof-arrow">&rarr;</span>
+    <span class="proof-label">Hiring post</span>
+
+    <span class="proof-quote">&ldquo;Pre-launch. Waitlist live.&rdquo;</span>
+    <span class="proof-arrow">&rarr;</span>
+    <span class="proof-label">Customer case</span>
+
+    <span class="proof-quote">&ldquo;Day 1. 25 yo. $15K by 30.&rdquo;</span>
+    <span class="proof-arrow">&rarr;</span>
+    <span class="proof-label">X thread</span>
+
+    <span class="proof-quote">&ldquo;ADR-001: Vercel &rarr; Hetzner.&rdquo;</span>
+    <span class="proof-arrow">&rarr;</span>
+    <span class="proof-label">Internal doc</span>
   </div>
 
-  <!-- Waitlist (Tally Popup) -->
-  <!-- Clicking the button opens form ID dWQlbq as a modal popup -->
+  <!-- Closing -->
+  <p class="hero-closing reveal">
+    Same week. Same proof. Five rewrites.<br>
+    <strong>Brypo does it once.</strong>
+  </p>
+
+  <!-- Waitlist CTA: Tally popup -->
   <div class="waitlist reveal">
     <button
       type="button"
+      class="waitlist-cta"
       data-tally-open="dWQlbq"
       data-tally-layout="modal"
-      data-tally-width="500"
+      data-tally-width="540"
       data-tally-overlay="1"
-      data-tally-emoji-text="👋"
-      data-tally-emoji-animation="wave"
-      aria-label="Open waitlist form">Join waitlist →</button>
+      data-tally-emoji-text="✦"
+      data-tally-emoji-animation="none"
+      aria-label="Open waitlist form"
+    >
+      Join &rarr; write once
+    </button>
+    <p class="waitlist-meta">No spam. One source. Five stories. When ready.</p>
   </div>
 
   <!-- Origin -->

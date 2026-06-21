@@ -139,7 +139,7 @@ main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: clamp(4rem, 10vw, 8rem);
+  margin-bottom: clamp(2rem, 5vw, 4rem);
   font-size: 13px;
   letter-spacing: 0.02em;
   text-transform: uppercase;
@@ -197,7 +197,7 @@ main {
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--muted);
-  margin-bottom: clamp(2rem, 5vw, 3rem);
+  margin-bottom: clamp(1.5rem, 4vw, 2.25rem);
   letter-spacing: 0.02em;
   display: flex;
   align-items: baseline;
@@ -443,6 +443,21 @@ main {
   margin: 0;
 }
 
+/* Primary (above-the-fold) CTA — lifted, prominent, tighter spacing */
+.waitlist-primary {
+  margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
+}
+
+.waitlist-primary .waitlist-cta {
+  padding: 1.15rem 2rem;
+  font-size: 14px;
+}
+
+/* Repeat CTA — sits with the closing content, footer auto-spaces below */
+.waitlist-repeat {
+  margin-bottom: 0;
+}
+
 /* ===== Origin (about the name) ===== */
 .origin {
   border-top: 1px solid var(--line);
@@ -574,6 +589,24 @@ footer .copyright {
     <span class="hook-secondary">You'll write about it 5 times.</span>
   </h2>
 
+  <!-- Primary CTA: above the fold, Tally popup -->
+  <div class="waitlist waitlist-primary reveal">
+    <button
+      type="button"
+      class="waitlist-cta"
+      data-tally-open="dWQlbq"
+      data-tally-layout="modal"
+      data-tally-width="540"
+      data-tally-overlay="1"
+      data-tally-emoji-text="✦"
+      data-tally-emoji-animation="none"
+      aria-label="Join the Brypo waitlist"
+    >
+      Join the waitlist &rarr;
+    </button>
+    <p class="waitlist-meta">No spam. One source. Five stories. When ready.</p>
+  </div>
+
   <!-- Proof grid: dogfood quotes mapped to stakeholder formats -->
   <div class="proof-grid reveal" aria-label="Same week, five formats">
     <span class="proof-quote">&ldquo;Hosting $400 &rarr; $200/yr.&rdquo;</span>
@@ -603,24 +636,6 @@ footer .copyright {
     <strong>Brypo does it once.</strong>
   </p>
 
-  <!-- Waitlist CTA: Tally popup -->
-  <div class="waitlist reveal">
-    <button
-      type="button"
-      class="waitlist-cta"
-      data-tally-open="dWQlbq"
-      data-tally-layout="modal"
-      data-tally-width="540"
-      data-tally-overlay="1"
-      data-tally-emoji-text="✦"
-      data-tally-emoji-animation="none"
-      aria-label="Open waitlist form"
-    >
-      Join &rarr; write once
-    </button>
-    <p class="waitlist-meta">No spam. One source. Five stories. When ready.</p>
-  </div>
-
   <!-- Origin -->
   <section class="origin reveal">
     <h3>About the name</h3>
@@ -632,6 +647,23 @@ footer .copyright {
       stakeholder actually wants to read.
     </p>
   </section>
+
+  <!-- Repeat CTA: before footer, Tally popup -->
+  <div class="waitlist waitlist-repeat reveal">
+    <button
+      type="button"
+      class="waitlist-cta"
+      data-tally-open="dWQlbq"
+      data-tally-layout="modal"
+      data-tally-width="540"
+      data-tally-overlay="1"
+      data-tally-emoji-text="✦"
+      data-tally-emoji-animation="none"
+      aria-label="Join the Brypo waitlist"
+    >
+      Join &rarr; write once
+    </button>
+  </div>
 
   <!-- Footer -->
   <footer class="reveal">

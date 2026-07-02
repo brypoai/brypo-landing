@@ -322,15 +322,29 @@ async function runLive(apiKey, runsPerCase) {
   for (const c of CASES) {
     const results = [];
     for (let i = 0; i < runsPerCase; i++) {
-      const { text, input_tokens, output_tokens } = await callCrossCheck(
-        apiKey,
-        SOURCE_TEXT,
-        c.output,
-      );
-      totalIn += input_tokens;
-      totalOut += output_tokens;
-      const { flags, cross_check_skipped } = sanitizeFlags(text, c.output);
-      const failure = c.check(flags, cross_check_skipped);
+      let failure;
+      let flags = [];
+      try {
+        const { text, input_tokens, output_tokens } = await callCrossCheck(
+          apiKey,
+          SOURCE_TEXT,
+          c.output,
+        );
+        totalIn += input_tokens;
+        totalOut += output_tokens;
+        const sanitized = sanitizeFlags(text, c.output);
+        flags = sanitized.flags;
+        failure = c.check(flags, sanitized.cross_check_skipped);
+      } catch (err) {
+        failure = `API error: ${err.message}`;
+        if (/API 401/.test(err.message)) {
+          console.error(`  ${c.id} run ${i + 1}: FAIL — ${failure}`);
+          console.error(
+            "  aborting live matrix: the key is invalid (check ANTHROPIC_API_KEY_TRY in .dev.vars)",
+          );
+          return false;
+        }
+      }
       results.push({ flags, failure });
       const summary = flags
         .map((f) => `[${f.verdict}/${f.confidence}] "${f.claim_text.slice(0, 60)}"`)

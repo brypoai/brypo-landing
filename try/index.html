@@ -52,6 +52,9 @@
   --fg: #f5f5f0;
   --fg-soft: #b8b8b0;
   --muted: #6b6b75;
+  /* Functional small text needs >=4.5:1 on both backgrounds; --muted
+     (3.75:1) stays for decorative use only. */
+  --muted-hi: #8f8f99;
   --accent: #e8553b;
   --accent-dim: #b13d28;
   --line: #1f1f2a;
@@ -143,10 +146,23 @@ main {
   font-size: 12px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--muted-hi);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.3em 0.9em;
+}
+
+/* Visually hidden, still announced */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* ===== Hero ===== */
@@ -180,7 +196,7 @@ main {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: var(--muted-hi);
   margin-bottom: 0.5rem;
 }
 
@@ -209,7 +225,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
   gap: 1rem;
   margin-top: 0.45rem;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted-hi);
 }
 
 .privacy-note { letter-spacing: 0.01em; }
@@ -248,7 +264,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
   border: 1px solid var(--line);
   border-radius: 999px;
   background: transparent;
-  color: var(--muted);
+  color: var(--muted-hi);
   letter-spacing: 0.01em;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -297,7 +313,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
 #generate:active:not(:disabled) { transform: translateY(1px); }
 #generate:disabled { opacity: 0.55; cursor: wait; }
 
-.generate-hint { font-size: 12px; color: var(--muted); }
+.generate-hint { font-size: 12px; color: var(--muted-hi); }
 
 /* ===== Page-level states ===== */
 .page-state {
@@ -336,6 +352,10 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
 /* display:grid would otherwise override the UA [hidden] rule */
 .results[hidden] { display: none; }
 
+/* Programmatic focus target after Generate — no visible ring needed */
+.results:focus { outline: none; }
+.card:focus { outline: none; }
+
 .card {
   background: var(--bg-soft);
   border: 1px solid var(--line);
@@ -366,9 +386,9 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
   padding: 0.35em 0;
   border-bottom: 1px solid var(--line);
 }
-.cc-strip.clean { color: var(--muted); }
+.cc-strip.clean { color: var(--muted-hi); }
 .cc-strip.flagged { color: var(--accent); font-weight: 500; }
-.cc-strip.skipped { color: var(--muted); font-style: italic; }
+.cc-strip.skipped { color: var(--muted-hi); font-style: italic; }
 
 /* Skeleton shimmer */
 .skeleton { display: flex; flex-direction: column; gap: 0.6rem; }
@@ -416,11 +436,12 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
 .card-section p, .card-section ul { margin-top: 0.5rem; color: var(--fg-soft); font-size: 13px; }
 
 .card-list-heading {
+  font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--muted);
+  color: var(--muted-hi);
   margin-bottom: 0.3rem;
 }
 
@@ -439,7 +460,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
   opacity: 0.7;
 }
 
-.card-closing { font-size: 13px; font-style: italic; color: var(--muted); }
+.card-closing { font-size: 13px; font-style: italic; color: var(--muted-hi); }
 
 /* SNS thread bubbles */
 .thread { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
@@ -470,7 +491,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
 
 .card-link a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); font-size: 13px; }
 
-.card-empty, .card-raw-note { font-size: 13px; color: var(--muted); font-style: italic; }
+.card-empty, .card-raw-note { font-size: 13px; color: var(--muted-hi); font-style: italic; }
 
 .card-raw {
   font-size: 12px;
@@ -520,6 +541,9 @@ mark.flagged:hover::after, mark.flagged:focus::after {
 
 mark.flagged:focus { outline: 1px dashed var(--accent); outline-offset: 2px; }
 
+/* Esc dismisses hover tooltips (WCAG 1.4.13); cleared on mouse move */
+body.tips-dismissed mark.flagged:hover::after { display: none; }
+
 /* Flags detail list */
 .flags-details { border-top: 1px solid var(--line); padding-top: 0.6rem; }
 .flags-details summary {
@@ -544,7 +568,7 @@ mark.flagged:focus { outline: 1px dashed var(--accent); outline-offset: 2px; }
   margin-right: 0.5em;
 }
 .flag-reason { color: var(--fg-soft); display: block; margin-top: 0.15rem; }
-.flag-confidence { color: var(--muted); font-size: 11px; }
+.flag-confidence { color: var(--muted-hi); font-size: 11px; }
 
 /* Card error */
 .card-error { font-size: 13px; color: var(--fg-soft); }
@@ -610,13 +634,13 @@ footer {
   flex-wrap: wrap;
   gap: 1rem;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--muted-hi);
   letter-spacing: 0.02em;
 }
 
 footer .links { display: flex; gap: 1.5rem; }
 footer a {
-  color: var(--muted);
+  color: var(--muted-hi);
   text-decoration: none;
   border-bottom: 1px solid transparent;
   transition: all 0.2s ease;
@@ -649,6 +673,7 @@ footer .copyright { text-transform: uppercase; }
 
 /* ===== Reduced motion ===== */
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   .reveal { opacity: 1; transform: none; animation: none; }
   .skeleton .bone { animation: none; background: #1a1a24; }
   * { transition: none !important; }
@@ -689,14 +714,17 @@ footer .copyright { text-transform: uppercase; }
   <!-- Generate -->
   <div class="generate-row reveal">
     <button type="button" id="generate">Generate</button>
-    <span class="generate-hint" id="generate-hint">5 formats selected</span>
+    <span class="generate-hint" id="generate-hint" role="status">5 formats selected</span>
   </div>
 
   <!-- Page-level state (budget / disabled / rate limit / too long) -->
   <div id="page-state" hidden></div>
 
+  <!-- Screen-reader progress announcements (short summaries, not card bodies) -->
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite"></div>
+
   <!-- Results -->
-  <section class="results" id="results" aria-live="polite" aria-label="Generated write-ups"></section>
+  <section class="results" id="results" tabindex="-1" aria-label="Generated write-ups"></section>
 
   <!-- Conversion block (revealed after first card resolves) -->
   <aside class="conversion" id="conversion" hidden>
@@ -766,15 +794,22 @@ footer .copyright { text-transform: uppercase; }
     hint: document.getElementById('generate-hint'),
     pageState: document.getElementById('page-state'),
     results: document.getElementById('results'),
-    conversion: document.getElementById('conversion')
+    conversion: document.getElementById('conversion'),
+    srStatus: document.getElementById('sr-status')
   };
 
   var state = {
     on: {},
     running: 0,
     lastSourceText: '',
-    halted: false
+    halted: false,
+    shownCode: null,
+    rendered: 0
   };
+
+  function announce(msg) {
+    els.srStatus.textContent = msg;
+  }
   FORMATS.forEach(function (f) { state.on[f.key] = true; });
 
   // ---- escaping + flag highlighting ----------------------------------------
@@ -808,10 +843,13 @@ footer .copyright { text-transform: uppercase; }
     var pos = 0;
     ranges.forEach(function (r) {
       var reason = r.f.verdict + ' — ' + r.f.reason;
+      // No aria-label: it would replace the claim text as the accessible
+      // name. The visible claim stays the content; the reason rides along
+      // in a visually-hidden span so screen readers get both.
       out += esc(text.slice(pos, r.start));
-      out += '<mark class="flagged" tabindex="0" data-reason="' + esc(reason) +
-        '" aria-label="Flagged claim: ' + esc(reason) + '">' +
-        esc(text.slice(r.start, r.end)) + '</mark>';
+      out += '<mark class="flagged" tabindex="0" data-reason="' + esc(reason) + '">' +
+        esc(text.slice(r.start, r.end)) +
+        '<span class="sr-only"> (flagged: ' + esc(reason) + ')</span></mark>';
       pos = r.end;
     });
     out += esc(text.slice(pos));
@@ -836,7 +874,7 @@ footer .copyright { text-transform: uppercase; }
 
   function listSection(items, heading, flags) {
     if (items.length === 0) return '';
-    return '<section><h4 class="card-list-heading">' + esc(heading) + '</h4>' +
+    return '<section><h3 class="card-list-heading">' + esc(heading) + '</h3>' +
       ul(items, flags) + '</section>';
   }
 
@@ -853,7 +891,7 @@ footer .copyright { text-transform: uppercase; }
       var heading = str(s.heading) || ('Section ' + (i + 1));
       var body = str(s.body);
       html += '<details class="card-section"' + (i === 0 ? ' open' : '') + '>' +
-        '<summary>' + esc(heading) + '</summary>' +
+        '<summary>' + renderText(heading, flags) + '</summary>' +
         (body ? '<p>' + renderText(body, flags) + '</p>' : '') + '</details>';
     });
     if (closing) html += '<p class="card-closing">' + renderText(closing, flags) + '</p>';
@@ -890,7 +928,7 @@ footer .copyright { text-transform: uppercase; }
       return null;
     }).filter(Boolean);
     if (roles.length > 0) {
-      html += '<section><h4 class="card-list-heading">Open roles</h4><ul class="role-list">' +
+      html += '<section><h3 class="card-list-heading">Open roles</h3><ul class="role-list">' +
         roles.map(function (r) {
           return '<li><strong>' + renderText(r.title, flags) + '</strong>' +
             (r.description ? '<span>' + renderText(r.description, flags) + '</span>' : '') + '</li>';
@@ -982,7 +1020,7 @@ footer .copyright { text-transform: uppercase; }
     article.id = 'card-' + fmt.key;
     article.setAttribute('aria-busy', 'true');
     article.innerHTML =
-      '<span class="card-label">' + esc(fmt.label) + '</span>' +
+      '<h2 class="card-label">' + esc(fmt.label) + '</h2>' +
       '<div class="card-body">' +
         '<div class="skeleton" aria-hidden="true"><span class="bone"></span><span class="bone"></span><span class="bone"></span><span class="bone"></span></div>' +
       '</div>';
@@ -1006,6 +1044,11 @@ footer .copyright { text-transform: uppercase; }
     }
     html += flagsDetails(flags);
     body.innerHTML = '<div class="card-content">' + html + '</div>';
+    state.rendered += 1;
+    var n = flags.length;
+    announce(fmt.label + ' ready' +
+      (data.cross_check_skipped ? ', cross-check unavailable.' :
+        n === 0 ? ', cross-check clean.' : ', ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged.'));
   }
 
   function renderCardError(fmt, message) {
@@ -1015,6 +1058,7 @@ footer .copyright { text-transform: uppercase; }
     card.querySelector('.card-body').innerHTML =
       '<div class="card-error"><p>' + esc(message) + '</p>' +
       '<button type="button" class="retry-btn" data-format="' + esc(fmt.key) + '">Retry</button></div>';
+    announce(fmt.label + ' failed — a retry button is available on its card.');
   }
 
   // ---- page-level states ----------------------------------------------------
@@ -1046,16 +1090,31 @@ footer .copyright { text-transform: uppercase; }
   function showPageState(code) {
     var s = PAGE_STATES[code];
     if (!s) return false;
+    // Parallel requests hit the same condition together — inject the
+    // alert once, not once per format.
+    if (state.shownCode === code) return true;
+    state.shownCode = code;
     state.halted = true;
     els.pageState.innerHTML =
       '<div class="page-state" role="alert"><h2>' + s.title + '</h2>' + s.body + '</div>';
     els.pageState.hidden = false;
-    els.results.hidden = true;
+    if (state.rendered === 0) {
+      // Nothing useful to keep — swap the whole grid for the notice.
+      els.results.hidden = true;
+    } else {
+      // Keep already-rendered cards; quiet the still-loading ones.
+      els.results.querySelectorAll('.card[aria-busy="true"]').forEach(function (card) {
+        card.setAttribute('aria-busy', 'false');
+        card.querySelector('.card-body').innerHTML =
+          '<p class="card-empty">Stopped before generating — see the notice above.</p>';
+      });
+    }
     return true;
   }
 
   function clearPageState() {
     state.halted = false;
+    state.shownCode = null;
     els.pageState.hidden = true;
     els.pageState.innerHTML = '';
     els.results.hidden = false;
@@ -1078,6 +1137,14 @@ footer .copyright { text-transform: uppercase; }
       return res.json().catch(function () { return null; }).then(function (data) {
         if (!res.ok) {
           var code = data && data.code;
+          // The zone WAF serves its own 429/503 with an HTML body (no
+          // JSON code) — map by HTTP status so users still get the
+          // friendly page state instead of per-card retry buttons.
+          if (!code || !PAGE_STATES[code]) {
+            if (res.status === 429) code = 'rate_limit';
+            else if (res.status === 503) code = 'disabled';
+            else if (res.status === 413) code = 'too_long';
+          }
           if (code && PAGE_STATES[code]) {
             showPageState(code);
           } else if (!state.halted) {
@@ -1086,7 +1153,12 @@ footer .copyright { text-transform: uppercase; }
           return;
         }
         if (state.halted) return;
-        renderCard(fmt, data || {});
+        if (!data) {
+          // 200 with an unreadable body — an error, not a clean result.
+          renderCardError(fmt, 'Something went wrong generating this one.');
+          return;
+        }
+        renderCard(fmt, data);
         els.conversion.hidden = false;
       });
     }).catch(function () {
@@ -1106,6 +1178,7 @@ footer .copyright { text-transform: uppercase; }
   function runGenerate() {
     var text = els.source.value;
     if (text.trim().length === 0) {
+      els.hint.textContent = 'Paste your week first';
       els.source.focus();
       return;
     }
@@ -1118,10 +1191,16 @@ footer .copyright { text-transform: uppercase; }
       els.hint.textContent = 'Pick at least one format';
       return;
     }
+    els.hint.textContent = selected.length + ' format' + (selected.length !== 1 ? 's' : '') + ' selected';
     state.lastSourceText = text;
+    state.rendered = 0;
     clearPageState();
     els.results.innerHTML = '';
     selected.forEach(function (f) { els.results.appendChild(makeCard(f)); });
+    // Move focus deliberately before the button disables itself — a
+    // disabled control drops keyboard focus to <body> otherwise.
+    els.results.focus();
+    announce('Generating ' + selected.length + ' write-up' + (selected.length !== 1 ? 's' : '') + '…');
     selected.forEach(function (f) { fetchFormat(f); });
   }
 
@@ -1133,6 +1212,9 @@ footer .copyright { text-transform: uppercase; }
     btn.type = 'button';
     btn.className = 'toggle';
     btn.textContent = f.label;
+    // Explicit name so the ○/● CSS glyphs never leak into the
+    // accessible name; state comes from aria-pressed alone.
+    btn.setAttribute('aria-label', f.label);
     btn.setAttribute('aria-pressed', 'true');
     btn.addEventListener('click', function () {
       state.on[f.key] = !state.on[f.key];
@@ -1173,9 +1255,27 @@ footer .copyright { text-transform: uppercase; }
       card.setAttribute('aria-busy', 'true');
       card.querySelector('.card-body').innerHTML =
         '<div class="skeleton" aria-hidden="true"><span class="bone"></span><span class="bone"></span><span class="bone"></span><span class="bone"></span></div>';
+      // The Retry button just vanished from under keyboard focus —
+      // park focus on the card so Tab order stays sensible.
+      card.setAttribute('tabindex', '-1');
+      card.focus();
     }
     fetchFormat(fmt);
   });
+
+  // Esc dismisses flag tooltips (WCAG 1.4.13): blur a focused mark,
+  // suppress hover tooltips until the pointer moves again.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var active = document.activeElement;
+    if (active && active.classList && active.classList.contains('flagged')) {
+      active.blur();
+    }
+    document.body.classList.add('tips-dismissed');
+  });
+  document.addEventListener('mousemove', function () {
+    document.body.classList.remove('tips-dismissed');
+  }, { passive: true });
 })();
 </script>
 </body>

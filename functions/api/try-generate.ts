@@ -107,6 +107,7 @@ async function callAnthropic(
   system: string,
   userMessage: string,
   maxTokens: number,
+  timeoutMs: number,
 ): Promise<AnthropicOk | AnthropicErr> {
   let res: Response;
   try {
@@ -123,8 +124,12 @@ async function callAnthropic(
         system,
         messages: [{ role: "user", content: userMessage }],
       }),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch {
+    // Network failure or timeout — a hung upstream must not stall the
+    // request forever (the generation path maps this to 502, the
+    // cross-check path to cross_check_skipped).
     return { ok: false, status: 0 };
   }
   if (!res.ok) {
@@ -190,8 +195,28 @@ async function accumulateSpend(kv: KVNamespace, now: Date, costUsd: number) {
 // ---- handler -------------------------------------------------------------------
 
 export async function onRequestPost(context: PagesContext): Promise<Response> {
-  const { request, env } = context;
   const t0 = Date.now();
+  try {
+    return await handlePost(context, t0);
+  } catch {
+    // Last-resort guard: an unexpected exception must still produce the
+    // contractual {error, code} JSON and the metadata log line, not the
+    // platform's generic HTML error page.
+    console.log(
+      JSON.stringify({
+        format_type: "unknown",
+        status: 500,
+        input_tokens: 0,
+        output_tokens: 0,
+        ms: Date.now() - t0,
+      }),
+    );
+    return errorResponse(500, "internal", "Unexpected server error.");
+  }
+}
+
+async function handlePost(context: PagesContext, t0: number): Promise<Response> {
+  const { request, env } = context;
   const now = new Date();
 
   const finish = (
@@ -273,13 +298,20 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   }
   const wantCrossCheck = body?.cross_check !== false;
 
-  // 3. Daily budget gate (UTC day).
+  // 3. Daily budget gate (UTC day). KV failures fail OPEN: availability
+  // of the free tool wins, and the Anthropic key's own $50/mo spend
+  // limit remains the hard backstop if KV is down all day.
   const budget = (() => {
     const n = parseFloat(env.DAILY_BUDGET_USD ?? "5");
     return Number.isFinite(n) ? n : 5;
   })();
-  const spentRaw = await env.TRY_KV.get(dailyUsageKey(now));
-  const spent = parseFloat(spentRaw ?? "0") || 0;
+  let spent = 0;
+  try {
+    const spentRaw = await env.TRY_KV.get(dailyUsageKey(now));
+    spent = parseFloat(spentRaw ?? "0") || 0;
+  } catch {
+    spent = 0;
+  }
   if (spent >= budget) {
     return finish(
       errorResponse(
@@ -293,25 +325,33 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     );
   }
 
-  // 4. Backstop hourly per-IP rate limit (independent of the zone WAF rule).
-  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const rateKey = hourlyRateKey(await ipHash16(ip), now);
-  const count = parseInt((await env.TRY_KV.get(rateKey)) ?? "0", 10) || 0;
-  if (count >= HOURLY_IP_LIMIT) {
-    return finish(
-      errorResponse(
-        429,
-        "rate_limit",
-        "Rate limit reached for this hour. Please try again later.",
-      ),
-      formatType,
-      0,
-      0,
-    );
+  // 4. Backstop hourly per-IP rate limit (independent of the zone WAF
+  // rule). KV failures fail OPEN — this is only the backstop; the zone
+  // WAF rule keeps limiting even when KV is unavailable. Notably, KV
+  // put() rejects once the free plan's daily write quota is exhausted;
+  // that must not take the endpoint down.
+  try {
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    const rateKey = hourlyRateKey(await ipHash16(ip), now);
+    const count = parseInt((await env.TRY_KV.get(rateKey)) ?? "0", 10) || 0;
+    if (count >= HOURLY_IP_LIMIT) {
+      return finish(
+        errorResponse(
+          429,
+          "rate_limit",
+          "Rate limit reached for this hour. Please try again later.",
+        ),
+        formatType,
+        0,
+        0,
+      );
+    }
+    await env.TRY_KV.put(rateKey, String(count + 1), {
+      expirationTtl: RATE_KEY_TTL_S,
+    });
+  } catch {
+    // fail open (see above)
   }
-  await env.TRY_KV.put(rateKey, String(count + 1), {
-    expirationTtl: RATE_KEY_TTL_S,
-  });
 
   // 5. Generation call.
   let inputTokens = 0;
@@ -321,6 +361,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     SYSTEM_PROMPTS[formatType],
     sourceText,
     GENERATION_MAX_TOKENS,
+    60_000,
   );
   if (!gen.ok) {
     return finish(
@@ -339,7 +380,14 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   let schemaFallback = false;
   if (parsed !== null) {
     const result = CONTENT_SCHEMAS[formatType].safeParse(parsed);
-    if (result.success) {
+    // All fields are optional and unknown keys are stripped, so safeParse
+    // succeeds even on wrapped/misnamed output ({} after strip). Treat an
+    // effectively-empty parse as a schema failure so the raw text reaches
+    // the user instead of a misleading "empty draft".
+    if (
+      result.success &&
+      flattenContentStrings(result.data).length > 0
+    ) {
       content = result.data as Record<string, unknown>;
     }
   }
@@ -368,6 +416,7 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
         CROSS_CHECK_SYSTEM_PROMPT,
         checkUserMessage,
         CROSS_CHECK_MAX_TOKENS,
+        30_000,
       );
       if (!check.ok) {
         crossCheckSkipped = true;

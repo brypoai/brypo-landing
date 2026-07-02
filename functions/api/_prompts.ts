@@ -82,7 +82,8 @@ Rules:
   2. The first item in "thread" MUST equal "hook".
   3. 3-5 posts total. Quality over length.
   4. Each post stands alone as a tweet AND connects to the next post.
-  5. Tone: casual builder voice. Numbers in the hook. No investor-speak,
+  5. Tone: casual builder voice. Numbers in the hook when the input has
+     them — never invent one to fill the slot. No investor-speak,
      no buzzwords, no LinkedIn-style throat-clearing.
   6. NO emojis. NO hashtags.
   7. Use ONLY facts in the pasted input. Never invent.
@@ -107,11 +108,12 @@ Output schema (STRICT — return exactly this shape):
     "<bullet 3>"
   ],
   "team_culture":     "<2-4 sentences on how the team works (cadence, decision style, transparency). Narrative is allowed here — you do NOT need to back every sentence with a fact, but you MUST NOT invent numbers, hires, or dates>",
-  "open_roles":       [
-    "<role title>" /* leave empty array unless the input explicitly mentions hiring or an open role; do NOT invent */
-  ],
+  "open_roles":       [],
   "application_link": "<a URL only if the input contains one; otherwise an empty string — never invent a link>"
 }
+
+Note: "open_roles" is shown empty because that is the default — see rule
+2 for the only case where it may contain role-title strings.
 
 Rules:
   1. Use ONLY facts present in the pasted input for any numeric, date,
@@ -148,15 +150,16 @@ Output schema (STRICT — return exactly this shape):
     "<bullet 1 — a specific improvement (perf / UX / feature). Reference the input when applicable; otherwise stay honest about scope>",
     "<bullet 2>"
   ],
-  "known_issues":      [
-    /* empty array by default; only populate if the input explicitly names a known issue or bug */
-  ],
+  "known_issues":      [],
   "next_steps": [
     "<bullet 1 — something planned, derived from plans stated in the input. No fictional dates>",
     "<bullet 2>"
   ],
   "cta":               "<one-line call to action, e.g. 'Reply if you want early access' — generic, never invented numbers>"
 }
+
+Note: "known_issues" is shown empty because that is the default — see
+rule 2 for the only case where it may contain bullet strings.
 
 Rules:
   1. Use ONLY facts in the pasted input. Factual, no superlatives that
@@ -192,13 +195,13 @@ Output schema (STRICT — return exactly this shape):
     "<bullet 1 — a decision made during the period, with the rationale in one sentence. Derive only from decisions actually stated in the input; do not invent>",
     "<bullet 2>"
   ],
-  "action_items":     [
-    /* forward-looking items derived from decisions or plans stated in the input; empty array OK if none are derivable */
-  ],
-  "open_questions":   [
-    /* empty array by default; populate only if the input explicitly leaves something undecided. Never invent open questions to seem deliberative */
-  ]
+  "action_items":     [],
+  "open_questions":   []
 }
+
+Note: "action_items" and "open_questions" are shown empty because empty
+is the default — rules 3 and 4 define the only cases where they may
+contain bullet strings.
 
 Rules:
   1. Use ONLY facts in the pasted input. Be more granular than an
@@ -241,18 +244,25 @@ For each specific factual claim in OUTPUT TEXT, decide:
   - supported: SOURCE TEXT states it, exactly or as a clear
     restatement of the same fact. Do not flag.
   - contradicted: SOURCE TEXT states something incompatible (e.g.
-    OUTPUT TEXT says "$42,000 MRR" but SOURCE TEXT says "$4,200 MRR").
+    OUTPUT TEXT says "8,000 users" but SOURCE TEXT says "800 users").
     Flag it.
   - unsupported: a specific factual claim SOURCE TEXT does not mention
     at all, where a reasonable reader would expect it to be sourced
     (an invented number, customer name, date, event, or quote). Flag it.
 
+Check claims WHEREVER they appear — including subject lines, titles,
+headlines, and hooks. A wrong number is wrong even in a title.
+
 Do NOT flag:
   - tone, style, hype level, or marketing language
-  - forward-looking statements ("we plan to...", "next month...",
-    "aiming for...") — they cannot contradict past notes by definition
-  - headings, titles, greetings, sign-offs, calls to action, or other
-    boilerplate
+  - the forward-looking framing itself ("we plan to...", "next
+    month...", "aiming for...") — intent cannot contradict past notes.
+    BUT a forward-looking sentence that contains a specific date,
+    amount, or name that SOURCE TEXT never mentions (e.g. an invented
+    "launching August 3" or "with Acme Corp") is still unsupported —
+    the intent is exempt, invented specifics are not.
+  - purely structural labels with no factual content (section headings
+    like "Highlights", greetings, sign-offs, calls to action)
   - restatements or rounding of the same number ("$4.2k" vs "$4,200"),
     or summaries that stay within what SOURCE TEXT says
   - general statements about what the product or company is or does,

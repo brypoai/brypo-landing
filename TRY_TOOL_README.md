@@ -91,6 +91,15 @@ Set all four for **both Production and Preview**.
 - **KV races**: budget/rate counters are read-modify-write; concurrent
   requests can undercount. Accepted at this scale — the WAF rule, the
   60/hr backstop, and the key's $50/mo hard cap bound the damage.
+- **KV failures fail OPEN**: if a budget-gate read or rate-limit
+  read/write throws (KV incident, or the free plan's 1,000 writes/day
+  quota exhausted), the request proceeds without that gate rather than
+  taking the endpoint down. The WAF rule and the Anthropic key's $50/mo
+  hard cap remain enforced regardless; flip `TRY_TOOL_ENABLED=false` if
+  spend must stop immediately during a KV outage.
+- **Upstream timeouts**: generation calls abort at 60s, cross-check at
+  30s (→ 502 `upstream` / `cross_check_skipped`), so a hung upstream
+  can't stall requests indefinitely.
 - **Budget check timing**: the gate checks spend *before* the call, so the
   last requests of the day can overshoot the cap by a few cents.
 - **Highlight misses**: flagged claims are matched as exact substrings in

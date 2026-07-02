@@ -443,6 +443,24 @@ main {
   margin: 0;
 }
 
+.waitlist-alt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  margin: 0;
+}
+
+.waitlist-alt a {
+  color: var(--fg-soft);
+  text-decoration: none;
+  border-bottom: 1px solid var(--line);
+  transition: all 0.2s ease;
+}
+
+.waitlist-alt a:hover {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
 /* Primary (above-the-fold) CTA — lifted, prominent, tighter spacing */
 .waitlist-primary {
   margin-bottom: clamp(2.5rem, 5vw, 3.5rem);
@@ -605,6 +623,7 @@ footer .copyright {
       Join the waitlist &rarr;
     </button>
     <p class="waitlist-meta">No spam. One source. Five stories. When ready.</p>
+    <p class="waitlist-alt"><a href="/try">or try the free tool &rarr;</a></p>
   </div>
 
   <!-- Proof grid: dogfood quotes mapped to stakeholder formats -->
@@ -669,6 +688,7 @@ footer .copyright {
   <footer class="reveal">
     <span class="copyright">© 2026 Brypo</span>
     <nav class="links">
+      <a href="/try">Try</a>
       <a href="https://x.com/brypoai" target="_blank" rel="noopener">X</a>
       <a href="https://github.com/brypoai" target="_blank" rel="noopener">GitHub</a>
       <a href="mailto:hello@brypo.com">hello@</a>

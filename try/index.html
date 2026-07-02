@@ -1,0 +1,1179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- ===== SEO ===== -->
+<title>Brypo /try — one week of proof, five write-ups, zero inflated claims</title>
+<meta name="description" content="Free, no-signup mini-tool: paste one week of founder notes, get an investor update, X thread, hiring post, customer case and internal doc — each fact-checked against your own words.">
+<link rel="canonical" href="https://brypo.com/try">
+<meta name="robots" content="index, follow">
+
+<!-- ===== OPEN GRAPH ===== -->
+<meta property="og:title" content="Brypo /try — one week of proof, five write-ups, zero inflated claims">
+<meta property="og:description" content="Paste your week. Get five write-ups and a fact-check that flags anything you can't back up. Free, no signup.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://brypo.com/try">
+<meta property="og:image" content="https://brypo.com/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:site_name" content="Brypo">
+<meta property="og:locale" content="en_US">
+
+<!-- ===== TWITTER CARD ===== -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Brypo /try — one week of proof, five write-ups, zero inflated claims">
+<meta name="twitter:description" content="Paste your week. Get five write-ups and a fact-check that flags anything you can't back up. Free, no signup.">
+<meta name="twitter:image" content="https://brypo.com/og-image.png">
+<meta name="twitter:site" content="@brypoai">
+<meta name="twitter:creator" content="@brypoai">
+
+<!-- ===== FAVICON ===== -->
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<meta name="theme-color" content="#0a0a0f">
+
+<!-- ===== FONTS ===== -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;0,9..144,900;1,9..144,500&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<!-- ===== TALLY EMBED (loaded once, async — same pattern as /) ===== -->
+<script async src="https://tally.so/widgets/embed.js"></script>
+
+<style>
+:root {
+  --bg: #0a0a0f;
+  --bg-soft: #14141c;
+  --fg: #f5f5f0;
+  --fg-soft: #b8b8b0;
+  --muted: #6b6b75;
+  --accent: #e8553b;
+  --accent-dim: #b13d28;
+  --line: #1f1f2a;
+  --max: 1100px;
+
+  --font-display: 'Fraunces', 'Times New Roman', serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+::selection { background: var(--accent); color: var(--bg); }
+
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  line-height: 1.7;
+  min-height: 100vh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ===== Grain texture overlay (same as /) ===== */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image:
+    radial-gradient(circle at 20% 30%, rgba(232, 85, 59, 0.04) 0%, transparent 40%),
+    radial-gradient(circle at 80% 70%, rgba(232, 85, 59, 0.03) 0%, transparent 40%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/><feColorMatrix values='0 0 0 0 0.96 0 0 0 0 0.96 0 0 0 0 0.94 0 0 0 0.05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  pointer-events: none;
+  opacity: 0.5;
+  z-index: 2;
+  mix-blend-mode: overlay;
+}
+
+main {
+  position: relative;
+  z-index: 3;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: clamp(1.5rem, 5vw, 3rem) clamp(1.25rem, 4vw, 3rem) clamp(3rem, 6vw, 5rem);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ===== Mini header ===== */
+.try-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: clamp(2rem, 5vw, 3.5rem);
+}
+
+.try-brand {
+  font-family: var(--font-display);
+  font-size: 1.7rem;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  color: var(--fg);
+  text-decoration: none;
+  font-variation-settings: "opsz" 144;
+}
+
+.try-brand .stroke {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.try-top .badge {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0.3em 0.9em;
+}
+
+/* ===== Hero ===== */
+.try-h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5.5vw, 3.4rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  margin-bottom: 0.6rem;
+  max-width: 22ch;
+  font-variation-settings: "opsz" 100;
+}
+
+.try-sub {
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--fg-soft);
+  margin-bottom: clamp(1.8rem, 4vw, 2.6rem);
+  letter-spacing: -0.01em;
+  max-width: 44ch;
+}
+
+/* ===== Input ===== */
+.input-block { max-width: 760px; }
+
+.input-label {
+  display: block;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.5rem;
+}
+
+textarea#source {
+  width: 100%;
+  min-height: 15.5em;
+  padding: 1rem 1.1rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.65;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+textarea#source::placeholder { color: var(--muted); }
+textarea#source:focus { outline: none; border-color: var(--accent); }
+
+.input-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin-top: 0.45rem;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.privacy-note { letter-spacing: 0.01em; }
+.privacy-note::before { content: '\2713\00a0'; color: var(--accent); }
+
+#char-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
+#char-count.near-limit { color: var(--accent); }
+
+.example-row { margin-top: 0.85rem; }
+
+.example-link {
+  background: none;
+  border: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease;
+}
+.example-link:hover, .example-link:focus-visible { border-bottom-color: var(--accent); }
+
+/* ===== Format toggles ===== */
+.format-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: clamp(1.4rem, 3vw, 2rem) 0;
+}
+
+.toggle {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  padding: 0.45em 1em;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.toggle::before { content: '\25cb\00a0\00a0'; font-size: 10px; }
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  color: var(--fg);
+  background: rgba(232, 85, 59, 0.08);
+}
+.toggle[aria-pressed="true"]::before { content: '\25cf\00a0\00a0'; color: var(--accent); }
+
+.toggle:hover { border-color: var(--accent); }
+
+/* ===== Generate ===== */
+.generate-row {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-bottom: clamp(2rem, 5vw, 3rem);
+  flex-wrap: wrap;
+}
+
+#generate {
+  padding: 1.05rem 2rem;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#generate:hover:not(:disabled) {
+  background: var(--accent-dim);
+  border-color: var(--accent-dim);
+  transform: translateY(-1px);
+}
+#generate:active:not(:disabled) { transform: translateY(1px); }
+#generate:disabled { opacity: 0.55; cursor: wait; }
+
+.generate-hint { font-size: 12px; color: var(--muted); }
+
+/* ===== Page-level states ===== */
+.page-state {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-soft);
+  padding: clamp(1.4rem, 3vw, 2rem);
+  margin-bottom: 2rem;
+  max-width: 640px;
+}
+
+.page-state h2 {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin-bottom: 0.5rem;
+}
+
+.page-state p {
+  font-size: 13.5px;
+  color: var(--fg-soft);
+  margin-bottom: 0.4rem;
+}
+
+.page-state .tally-cta { margin-top: 1rem; }
+
+/* ===== Results grid ===== */
+.results {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 1.1rem;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.card {
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 1.25rem 1.3rem 1.4rem;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.card-label {
+  align-self: flex-start;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--accent);
+  border: 1px solid rgba(232, 85, 59, 0.35);
+  border-radius: 999px;
+  padding: 0.25em 0.8em;
+}
+
+/* Cross-check strip */
+.cc-strip {
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  padding: 0.35em 0;
+  border-bottom: 1px solid var(--line);
+}
+.cc-strip.clean { color: var(--muted); }
+.cc-strip.flagged { color: var(--accent); font-weight: 500; }
+.cc-strip.skipped { color: var(--muted); font-style: italic; }
+
+/* Skeleton shimmer */
+.skeleton { display: flex; flex-direction: column; gap: 0.6rem; }
+.skeleton .bone {
+  height: 0.85em;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #1a1a24 25%, #232330 50%, #1a1a24 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+.skeleton .bone:nth-child(1) { width: 70%; height: 1.1em; }
+.skeleton .bone:nth-child(2) { width: 95%; }
+.skeleton .bone:nth-child(3) { width: 88%; }
+.skeleton .bone:nth-child(4) { width: 60%; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Card content typography */
+.card-subject {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--fg);
+}
+
+.card-meta { font-size: 13px; color: var(--fg-soft); }
+
+.card-content { display: flex; flex-direction: column; gap: 0.7rem; font-size: 13px; }
+
+.card-section { border: 1px solid var(--line); border-radius: 4px; padding: 0.55rem 0.8rem; }
+.card-section summary {
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--fg-soft);
+}
+.card-section summary::marker { color: var(--accent); }
+.card-section p, .card-section ul { margin-top: 0.5rem; color: var(--fg-soft); font-size: 13px; }
+
+.card-list-heading {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 0.3rem;
+}
+
+.card ul { list-style: none; }
+.card ul li {
+  padding-left: 1.1em;
+  position: relative;
+  color: var(--fg-soft);
+  margin-bottom: 0.35em;
+}
+.card ul li::before {
+  content: '\2192';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+.card-closing { font-size: 13px; font-style: italic; color: var(--muted); }
+
+/* SNS thread bubbles */
+.thread { list-style: none; display: flex; flex-direction: column; gap: 0.6rem; }
+.thread li {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.6rem 0.8rem;
+}
+.thread .idx {
+  display: block;
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.08em;
+  margin-bottom: 0.25rem;
+}
+.thread p { font-size: 13px; color: var(--fg-soft); }
+
+.role-list li strong { color: var(--fg); display: block; }
+.role-list li span { font-size: 12.5px; }
+
+.card-cta-box {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  padding: 0.6rem 0.9rem;
+  font-size: 13px;
+  color: var(--fg-soft);
+}
+
+.card-link a { color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent); font-size: 13px; }
+
+.card-empty, .card-raw-note { font-size: 13px; color: var(--muted); font-style: italic; }
+
+.card-raw {
+  font-size: 12px;
+  color: var(--fg-soft);
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 0.8rem;
+  max-height: 22em;
+  overflow-y: auto;
+}
+
+/* Flag highlight */
+mark.flagged {
+  background: rgba(232, 85, 59, 0.16);
+  color: inherit;
+  border-bottom: 1px dashed var(--accent);
+  border-radius: 2px;
+  padding: 0 0.1em;
+  cursor: help;
+  position: relative;
+}
+
+mark.flagged:hover::after, mark.flagged:focus::after {
+  content: attr(data-reason);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  background: #1a1a24;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  color: var(--fg-soft);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+  padding: 0.5em 0.8em;
+  border-radius: 4px;
+  width: max-content;
+  max-width: min(280px, 74vw);
+  white-space: normal;
+  z-index: 20;
+  pointer-events: none;
+}
+
+mark.flagged:focus { outline: 1px dashed var(--accent); outline-offset: 2px; }
+
+/* Flags detail list */
+.flags-details { border-top: 1px solid var(--line); padding-top: 0.6rem; }
+.flags-details summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--accent);
+  letter-spacing: 0.03em;
+}
+.flags-details ul { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.55rem; }
+.flags-details li { font-size: 12px; padding-left: 0 !important; }
+.flags-details li::before { content: none !important; }
+.flag-claim { color: var(--fg); }
+.flag-verdict {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 3px;
+  padding: 0 0.5em;
+  margin-right: 0.5em;
+}
+.flag-reason { color: var(--fg-soft); display: block; margin-top: 0.15rem; }
+.flag-confidence { color: var(--muted); font-size: 11px; }
+
+/* Card error */
+.card-error { font-size: 13px; color: var(--fg-soft); }
+.retry-btn {
+  margin-top: 0.6rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  padding: 0.45em 1.1em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.retry-btn:hover { background: var(--accent); color: var(--bg); }
+
+/* ===== Conversion block ===== */
+.conversion {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-soft);
+  padding: clamp(1.4rem, 3vw, 2rem);
+  max-width: 640px;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.conversion p {
+  font-size: 13.5px;
+  color: var(--fg-soft);
+  margin-bottom: 1rem;
+  max-width: 52ch;
+}
+
+.conversion p strong { color: var(--fg); }
+
+.tally-cta {
+  padding: 0.95rem 1.6rem;
+  background: var(--accent);
+  color: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+.tally-cta:hover { background: var(--accent-dim); border-color: var(--accent-dim); transform: translateY(-1px); }
+.tally-cta:active { transform: translateY(1px); }
+
+/* ===== Footer ===== */
+footer {
+  margin-top: auto;
+  padding-top: clamp(2.5rem, 5vw, 4rem);
+  border-top: 1px solid var(--line);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  font-size: 12px;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+footer .links { display: flex; gap: 1.5rem; }
+footer a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+footer a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+footer .copyright { text-transform: uppercase; }
+
+/* ===== Stagger reveal (same as /) ===== */
+.reveal {
+  opacity: 0;
+  transform: translateY(8px);
+  animation: reveal 0.7s cubic-bezier(0.2, 0.6, 0.3, 1) forwards;
+}
+.reveal:nth-child(1) { animation-delay: 0.05s; }
+.reveal:nth-child(2) { animation-delay: 0.15s; }
+.reveal:nth-child(3) { animation-delay: 0.25s; }
+.reveal:nth-child(4) { animation-delay: 0.35s; }
+.reveal:nth-child(5) { animation-delay: 0.45s; }
+.reveal:nth-child(6) { animation-delay: 0.55s; }
+
+@keyframes reveal { to { opacity: 1; transform: translateY(0); } }
+
+/* ===== Mobile ===== */
+@media (max-width: 600px) {
+  .try-top .badge { font-size: 10px; }
+  .input-meta { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
+  .toggle { font-size: 11.5px; padding: 0.4em 0.8em; }
+  footer { font-size: 11px; }
+}
+
+/* ===== Reduced motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; animation: none; }
+  .skeleton .bone { animation: none; background: #1a1a24; }
+  * { transition: none !important; }
+}
+</style>
+</head>
+
+<body>
+<main>
+
+  <!-- Mini header -->
+  <header class="try-top reveal">
+    <a class="try-brand" href="/">Brypo<span class="stroke">.</span></a>
+    <span class="badge">free tool &middot; no signup</span>
+  </header>
+
+  <!-- Hero -->
+  <h1 class="try-h1 reveal">Paste your week. Get five write-ups.</h1>
+  <p class="try-sub reveal">&hellip;and a fact-check that flags anything you can&rsquo;t back up.</p>
+
+  <!-- Input -->
+  <section class="input-block reveal" aria-label="Your week's notes">
+    <label class="input-label" for="source">Your week, as it actually happened</label>
+    <textarea id="source" maxlength="12000" rows="10"
+      placeholder="mon: shipped the new auth flow, took all day&#10;tue — 12 signups from the launch tweet. MRR $890&#10;wed: long call with first paying customer, wants CSV export&#10;&hellip;paste anything: Slack fragments, commit messages, numbers, half-sentences."></textarea>
+    <div class="input-meta">
+      <span class="privacy-note">Processed and discarded. Your text is never stored.</span>
+      <span id="char-count" aria-live="off">0 / 12,000</span>
+    </div>
+    <div class="example-row">
+      <button type="button" class="example-link" id="example-btn">Try an example &rarr;</button>
+    </div>
+  </section>
+
+  <!-- Format toggles -->
+  <div class="format-toggles reveal" role="group" aria-label="Formats to generate" id="toggles"></div>
+
+  <!-- Generate -->
+  <div class="generate-row reveal">
+    <button type="button" id="generate">Generate</button>
+    <span class="generate-hint" id="generate-hint">5 formats selected</span>
+  </div>
+
+  <!-- Page-level state (budget / disabled / rate limit / too long) -->
+  <div id="page-state" hidden></div>
+
+  <!-- Results -->
+  <section class="results" id="results" aria-live="polite" aria-label="Generated write-ups"></section>
+
+  <!-- Conversion block (revealed after first card resolves) -->
+  <aside class="conversion" id="conversion" hidden>
+    <p>
+      <strong>This is the free slice.</strong> Full Brypo works from your real
+      evidence &mdash; screenshots, Slack, recordings &mdash; and keeps every
+      version honest.
+    </p>
+    <button
+      type="button"
+      class="tally-cta"
+      data-tally-open="dWQlbq"
+      data-tally-layout="modal"
+      data-tally-width="540"
+      data-tally-overlay="1"
+      data-tally-emoji-text="&#10022;"
+      data-tally-emoji-animation="none"
+      aria-label="Join the Brypo waitlist"
+    >
+      Join the waitlist &rarr;
+    </button>
+  </aside>
+
+  <!-- Footer -->
+  <footer class="reveal">
+    <span class="copyright">&copy; 2026 Brypo</span>
+    <nav class="links">
+      <a href="/">Home</a>
+      <a href="https://x.com/brypoai" target="_blank" rel="noopener">X</a>
+      <a href="https://github.com/brypoai" target="_blank" rel="noopener">GitHub</a>
+    </nav>
+  </footer>
+
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  var MAX_CHARS = 12000;
+
+  var FORMATS = [
+    { key: 'investor', label: 'Investor update' },
+    { key: 'sns',      label: 'X thread' },
+    { key: 'hiring',   label: 'Hiring post' },
+    { key: 'customer', label: 'Customer case' },
+    { key: 'internal', label: 'Internal doc' }
+  ];
+
+  var EXAMPLE_TEXT = [
+    'mon — shipped the new onboarding checklist. took 3 days not 1, classic.',
+    'tue: MRR $4,280 (up from $3,850 last wk). 33 paying users. churn 1 (the agency guy, expected)',
+    'wed — call w/ Dana @ Northwind: wants the Slack integration before she upgrades to the team plan. said "if it posts to our channel I\'ll pay tomorrow"',
+    'also demo for 2 seed funds went ok?? one asked about retention, need a cohort chart',
+    'thu: killed the CSV export bug (columns misaligned when metrics empty). closed 14 tickets. support inbox at zero for the first time since may',
+    'fri — decision: mobile app postponed to Q4. the web dashboard is the wedge. wrote ADR-007',
+    'weekend: 61 new free signups from the HN comment (thread about build-in-public tools)',
+    'next: Slack integration beta target July 15. need to email the waitlist (740 ppl)'
+  ].join('\n');
+
+  var els = {
+    source: document.getElementById('source'),
+    charCount: document.getElementById('char-count'),
+    exampleBtn: document.getElementById('example-btn'),
+    toggles: document.getElementById('toggles'),
+    generate: document.getElementById('generate'),
+    hint: document.getElementById('generate-hint'),
+    pageState: document.getElementById('page-state'),
+    results: document.getElementById('results'),
+    conversion: document.getElementById('conversion')
+  };
+
+  var state = {
+    on: {},
+    running: 0,
+    lastSourceText: '',
+    halted: false
+  };
+  FORMATS.forEach(function (f) { state.on[f.key] = true; });
+
+  // ---- escaping + flag highlighting ----------------------------------------
+
+  function esc(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  // Escape ALL model text, wrapping the first occurrence of each flagged
+  // claim in this field with a <mark>. Ranges are computed on the raw
+  // string first so injected markup can never be matched against.
+  function renderText(text, flags) {
+    if (typeof text !== 'string') return '';
+    var ranges = [];
+    (flags || []).forEach(function (f) {
+      if (!f || typeof f.claim_text !== 'string' || f.claim_text.length === 0) return;
+      var idx = text.indexOf(f.claim_text);
+      if (idx === -1) return;
+      var end = idx + f.claim_text.length;
+      var overlaps = ranges.some(function (r) { return idx < r.end && end > r.start; });
+      if (overlaps) return;
+      ranges.push({ start: idx, end: end, f: f });
+    });
+    ranges.sort(function (a, b) { return a.start - b.start; });
+    var out = '';
+    var pos = 0;
+    ranges.forEach(function (r) {
+      var reason = r.f.verdict + ' — ' + r.f.reason;
+      out += esc(text.slice(pos, r.start));
+      out += '<mark class="flagged" tabindex="0" data-reason="' + esc(reason) +
+        '" aria-label="Flagged claim: ' + esc(reason) + '">' +
+        esc(text.slice(r.start, r.end)) + '</mark>';
+      pos = r.end;
+    });
+    out += esc(text.slice(pos));
+    return out;
+  }
+
+  function str(v) { return typeof v === 'string' && v.trim().length > 0 ? v : null; }
+  function arr(v) { return Array.isArray(v) ? v : []; }
+  function strList(v) {
+    return arr(v).map(function (x) {
+      if (typeof x === 'string') return x;
+      if (x && typeof x === 'object') return str(x.text) || str(x.title) || null;
+      return null;
+    }).filter(function (x) { return x !== null && x.trim().length > 0; });
+  }
+
+  function ul(items, flags) {
+    return '<ul>' + items.map(function (it) {
+      return '<li>' + renderText(it, flags) + '</li>';
+    }).join('') + '</ul>';
+  }
+
+  function listSection(items, heading, flags) {
+    if (items.length === 0) return '';
+    return '<section><h4 class="card-list-heading">' + esc(heading) + '</h4>' +
+      ul(items, flags) + '</section>';
+  }
+
+  // ---- per-format templates (visual port of the app's format cards) --------
+
+  function tplInvestor(c, flags) {
+    var subject = str(c.subject), greeting = str(c.greeting), closing = str(c.closing);
+    var sections = arr(c.sections);
+    var html = '';
+    if (subject) html += '<p class="card-subject">' + renderText(subject, flags) + '</p>';
+    if (greeting) html += '<p class="card-meta">' + renderText(greeting, flags) + '</p>';
+    sections.forEach(function (s, i) {
+      if (!s || typeof s !== 'object') return;
+      var heading = str(s.heading) || ('Section ' + (i + 1));
+      var body = str(s.body);
+      html += '<details class="card-section"' + (i === 0 ? ' open' : '') + '>' +
+        '<summary>' + esc(heading) + '</summary>' +
+        (body ? '<p>' + renderText(body, flags) + '</p>' : '') + '</details>';
+    });
+    if (closing) html += '<p class="card-closing">' + renderText(closing, flags) + '</p>';
+    return html;
+  }
+
+  function tplSns(c, flags) {
+    var hook = str(c.hook);
+    var posts = strList(c.thread);
+    var html = '';
+    if (hook && posts.length === 0) html += '<p class="card-subject">' + renderText(hook, flags) + '</p>';
+    if (posts.length > 0) {
+      html += '<ol class="thread" aria-label="Thread of ' + posts.length + ' posts">' +
+        posts.map(function (p, i) {
+          return '<li><span class="idx">' + (i + 1) + '/' + posts.length + '</span>' +
+            '<p>' + renderText(p, flags) + '</p></li>';
+        }).join('') + '</ol>';
+    }
+    return html;
+  }
+
+  function tplHiring(c, flags) {
+    var html = '';
+    var headline = str(c.headline);
+    if (headline) html += '<p class="card-subject">' + renderText(headline, flags) + '</p>';
+    var mission = str(c.mission_summary);
+    if (mission) html += '<p class="card-meta">' + renderText(mission, flags) + '</p>';
+    var culture = str(c.team_culture);
+    if (culture) html += '<p class="card-meta">' + renderText(culture, flags) + '</p>';
+    html += listSection(strList(c.recent_milestones), 'Recent milestones', flags);
+    var roles = arr(c.open_roles).map(function (r) {
+      if (typeof r === 'string') return { title: r, description: null };
+      if (r && typeof r === 'object' && str(r.title)) return { title: r.title, description: str(r.description) };
+      return null;
+    }).filter(Boolean);
+    if (roles.length > 0) {
+      html += '<section><h4 class="card-list-heading">Open roles</h4><ul class="role-list">' +
+        roles.map(function (r) {
+          return '<li><strong>' + renderText(r.title, flags) + '</strong>' +
+            (r.description ? '<span>' + renderText(r.description, flags) + '</span>' : '') + '</li>';
+        }).join('') + '</ul></section>';
+    }
+    var link = str(c.application_link);
+    if (link && /^https?:\/\//i.test(link)) {
+      html += '<p class="card-link"><a href="' + esc(link) + '" rel="noopener noreferrer" target="_blank">Apply &rarr;</a></p>';
+    }
+    return html;
+  }
+
+  function tplCustomer(c, flags) {
+    var html = '';
+    var title = str(c.update_title);
+    if (title) html += '<p class="card-subject">' + renderText(title, flags) + '</p>';
+    var since = str(c.since_last_update);
+    if (since) html += '<p class="card-meta">' + renderText(since, flags) + '</p>';
+    html += listSection(strList(c.highlights), 'Highlights', flags);
+    html += listSection(strList(c.improvements), 'Improvements', flags);
+    html += listSection(strList(c.known_issues), 'Known issues', flags);
+    var next = typeof c.next_steps === 'string' ? [c.next_steps] : strList(c.next_steps);
+    html += listSection(next.filter(function (s) { return s.trim().length > 0; }), 'Next steps', flags);
+    var cta = str(c.cta);
+    if (cta) html += '<p class="card-cta-box" role="note">' + renderText(cta, flags) + '</p>';
+    return html;
+  }
+
+  function tplInternal(c, flags) {
+    var html = '';
+    var summary = str(c.period_summary);
+    if (summary) html += '<p class="card-subject">' + renderText(summary, flags) + '</p>';
+    var groups = [
+      ['key_events', 'Key events'],
+      ['decisions', 'Decisions'],
+      ['open_questions', 'Open questions'],
+      ['action_items', 'Action items']
+    ];
+    groups.forEach(function (g) {
+      var items = strList(c[g[0]]);
+      if (items.length === 0) return;
+      html += '<details class="card-section"><summary>' + g[1] + ' (' + items.length + ')</summary>' +
+        ul(items, flags) + '</details>';
+    });
+    return html;
+  }
+
+  var TEMPLATES = {
+    investor: tplInvestor,
+    sns: tplSns,
+    hiring: tplHiring,
+    customer: tplCustomer,
+    internal: tplInternal
+  };
+
+  // ---- cross-check UI -------------------------------------------------------
+
+  function ccStrip(data) {
+    if (data.cross_check_skipped) {
+      return '<div class="cc-strip skipped">cross-check unavailable for this run</div>';
+    }
+    var n = (data.flags || []).length;
+    if (n === 0) {
+      return '<div class="cc-strip clean">&#10003; Cross-check: clean</div>';
+    }
+    return '<div class="cc-strip flagged">&#9888; ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged</div>';
+  }
+
+  function flagsDetails(flags) {
+    if (!flags || flags.length === 0) return '';
+    return '<details class="flags-details"><summary>Flags (' + flags.length + ')</summary><ul>' +
+      flags.map(function (f) {
+        return '<li>' +
+          '<span class="flag-verdict">' + esc(f.verdict) + '</span>' +
+          '<span class="flag-claim">&ldquo;' + esc(f.claim_text) + '&rdquo;</span>' +
+          '<span class="flag-reason">' + esc(f.reason) +
+          ' <span class="flag-confidence">(' + esc(f.kind) + ' &middot; confidence: ' + esc(f.confidence) + ')</span></span>' +
+          '</li>';
+      }).join('') + '</ul></details>';
+  }
+
+  // ---- card lifecycle -------------------------------------------------------
+
+  function cardEl(key) { return document.getElementById('card-' + key); }
+
+  function makeCard(fmt) {
+    var article = document.createElement('article');
+    article.className = 'card';
+    article.id = 'card-' + fmt.key;
+    article.setAttribute('aria-busy', 'true');
+    article.innerHTML =
+      '<span class="card-label">' + esc(fmt.label) + '</span>' +
+      '<div class="card-body">' +
+        '<div class="skeleton" aria-hidden="true"><span class="bone"></span><span class="bone"></span><span class="bone"></span><span class="bone"></span></div>' +
+      '</div>';
+    return article;
+  }
+
+  function renderCard(fmt, data) {
+    var card = cardEl(fmt.key);
+    if (!card) return;
+    card.setAttribute('aria-busy', 'false');
+    var body = card.querySelector('.card-body');
+    var flags = Array.isArray(data.flags) ? data.flags : [];
+    var html = ccStrip(data);
+    if (data.schema_fallback) {
+      html += '<p class="card-raw-note">Couldn&rsquo;t shape this one into its layout &mdash; raw output below.</p>';
+      html += '<pre class="card-raw">' + esc(String(data.content_raw || '')) + '</pre>';
+    } else {
+      var content = (data.content && typeof data.content === 'object') ? data.content : {};
+      var inner = TEMPLATES[fmt.key](content, flags);
+      html += inner || '<p class="card-empty">Empty draft &mdash; try adding more detail to your notes.</p>';
+    }
+    html += flagsDetails(flags);
+    body.innerHTML = '<div class="card-content">' + html + '</div>';
+  }
+
+  function renderCardError(fmt, message) {
+    var card = cardEl(fmt.key);
+    if (!card) return;
+    card.setAttribute('aria-busy', 'false');
+    card.querySelector('.card-body').innerHTML =
+      '<div class="card-error"><p>' + esc(message) + '</p>' +
+      '<button type="button" class="retry-btn" data-format="' + esc(fmt.key) + '">Retry</button></div>';
+  }
+
+  // ---- page-level states ----------------------------------------------------
+
+  var TALLY_BTN =
+    '<button type="button" class="tally-cta" data-tally-open="dWQlbq" data-tally-layout="modal" ' +
+    'data-tally-width="540" data-tally-overlay="1" data-tally-emoji-text="&#10022;" ' +
+    'data-tally-emoji-animation="none" aria-label="Join the Brypo waitlist">Join the waitlist &rarr;</button>';
+
+  var PAGE_STATES = {
+    budget: {
+      title: 'Today’s budget is used up.',
+      body: '<p>The free tool hit today’s budget — it resets daily. Join the waitlist and we’ll ping you at launch.</p>' + TALLY_BTN
+    },
+    disabled: {
+      title: 'The free tool is taking a breather.',
+      body: '<p>We’ve switched it off for the moment. Join the waitlist and we’ll ping you when it’s back — and at launch.</p>' + TALLY_BTN
+    },
+    rate_limit: {
+      title: 'Whoa — that’s a lot of generating.',
+      body: '<p>You’ve hit the hourly limit. Give it a little while and try again.</p>'
+    },
+    too_long: {
+      title: 'That’s more than a week’s worth.',
+      body: '<p>The input cap is 12,000 characters — trim your notes down and try again.</p>'
+    }
+  };
+
+  function showPageState(code) {
+    var s = PAGE_STATES[code];
+    if (!s) return false;
+    state.halted = true;
+    els.pageState.innerHTML =
+      '<div class="page-state" role="alert"><h2>' + s.title + '</h2>' + s.body + '</div>';
+    els.pageState.hidden = false;
+    els.results.hidden = true;
+    return true;
+  }
+
+  function clearPageState() {
+    state.halted = false;
+    els.pageState.hidden = true;
+    els.pageState.innerHTML = '';
+    els.results.hidden = false;
+  }
+
+  // ---- fetch ------------------------------------------------------------------
+
+  function fetchFormat(fmt) {
+    state.running += 1;
+    syncGenerateButton();
+    return fetch('/api/try-generate', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source_text: state.lastSourceText,
+        format_type: fmt.key,
+        cross_check: true
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (!res.ok) {
+          var code = data && data.code;
+          if (code && PAGE_STATES[code]) {
+            showPageState(code);
+          } else if (!state.halted) {
+            renderCardError(fmt, (data && data.error) || 'Something went wrong generating this one.');
+          }
+          return;
+        }
+        if (state.halted) return;
+        renderCard(fmt, data || {});
+        els.conversion.hidden = false;
+      });
+    }).catch(function () {
+      if (!state.halted) renderCardError(fmt, 'Network hiccup — give it another go.');
+    }).finally(function () {
+      state.running -= 1;
+      syncGenerateButton();
+    });
+  }
+
+  function syncGenerateButton() {
+    var busy = state.running > 0;
+    els.generate.disabled = busy;
+    els.generate.textContent = busy ? 'Generating…' : 'Generate';
+  }
+
+  function runGenerate() {
+    var text = els.source.value;
+    if (text.trim().length === 0) {
+      els.source.focus();
+      return;
+    }
+    if (text.length > MAX_CHARS) {
+      showPageState('too_long');
+      return;
+    }
+    var selected = FORMATS.filter(function (f) { return state.on[f.key]; });
+    if (selected.length === 0) {
+      els.hint.textContent = 'Pick at least one format';
+      return;
+    }
+    state.lastSourceText = text;
+    clearPageState();
+    els.results.innerHTML = '';
+    selected.forEach(function (f) { els.results.appendChild(makeCard(f)); });
+    selected.forEach(function (f) { fetchFormat(f); });
+  }
+
+  // ---- wiring -------------------------------------------------------------------
+
+  // Format toggles
+  FORMATS.forEach(function (f) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'toggle';
+    btn.textContent = f.label;
+    btn.setAttribute('aria-pressed', 'true');
+    btn.addEventListener('click', function () {
+      state.on[f.key] = !state.on[f.key];
+      btn.setAttribute('aria-pressed', String(state.on[f.key]));
+      var n = FORMATS.filter(function (x) { return state.on[x.key]; }).length;
+      els.hint.textContent = n === 0 ? 'Pick at least one format' : n + ' format' + (n !== 1 ? 's' : '') + ' selected';
+    });
+    els.toggles.appendChild(btn);
+  });
+
+  // Char counter
+  function syncCount() {
+    var n = els.source.value.length;
+    els.charCount.textContent = n.toLocaleString('en-US') + ' / 12,000';
+    els.charCount.classList.toggle('near-limit', n > MAX_CHARS - 500);
+  }
+  els.source.addEventListener('input', syncCount);
+  syncCount();
+
+  // Example
+  els.exampleBtn.addEventListener('click', function () {
+    els.source.value = EXAMPLE_TEXT;
+    syncCount();
+    els.source.focus();
+  });
+
+  // Generate
+  els.generate.addEventListener('click', runGenerate);
+
+  // Retry (delegated)
+  els.results.addEventListener('click', function (e) {
+    var btn = e.target.closest('.retry-btn');
+    if (!btn) return;
+    var fmt = FORMATS.find(function (f) { return f.key === btn.getAttribute('data-format'); });
+    if (!fmt) return;
+    var card = cardEl(fmt.key);
+    if (card) {
+      card.setAttribute('aria-busy', 'true');
+      card.querySelector('.card-body').innerHTML =
+        '<div class="skeleton" aria-hidden="true"><span class="bone"></span><span class="bone"></span><span class="bone"></span><span class="bone"></span></div>';
+    }
+    fetchFormat(fmt);
+  });
+})();
+</script>
+</body>
+</html>

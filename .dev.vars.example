@@ -1,0 +1,11 @@
+# Copy to .dev.vars for local dev with `npm run dev`. NEVER commit .dev.vars.
+# Production values are set in the Cloudflare Pages dashboard (see TRY_TOOL_README.md).
+
+# Dedicated Anthropic key for the /try tool (separate from the app's key, $50/mo spend limit).
+ANTHROPIC_API_KEY_TRY=
+
+# Kill switch: anything other than the exact string "true" disables the endpoint (503).
+TRY_TOOL_ENABLED=true
+
+# Daily spend cap in USD (UTC day). Launch-day raise: set to 25 in the dashboard.
+DAILY_BUDGET_USD=5

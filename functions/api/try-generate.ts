@@ -24,7 +24,7 @@
  */
 
 import {
-  CONTENT_SCHEMAS,
+  CONTENT_VALIDATORS,
   CROSS_CHECK_MAX_TOKENS,
   GENERATION_MAX_TOKENS,
   HOURLY_IP_LIMIT,
@@ -379,16 +379,13 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
   let contentRaw: string | null = null;
   let schemaFallback = false;
   if (parsed !== null) {
-    const result = CONTENT_SCHEMAS[formatType].safeParse(parsed);
-    // All fields are optional and unknown keys are stripped, so safeParse
+    const result = CONTENT_VALIDATORS[formatType](parsed);
+    // All fields are optional and unknown keys are stripped, so validation
     // succeeds even on wrapped/misnamed output ({} after strip). Treat an
-    // effectively-empty parse as a schema failure so the raw text reaches
+    // effectively-empty result as a schema failure so the raw text reaches
     // the user instead of a misleading "empty draft".
-    if (
-      result.success &&
-      flattenContentStrings(result.data).length > 0
-    ) {
-      content = result.data as Record<string, unknown>;
+    if (result.ok && flattenContentStrings(result.value).length > 0) {
+      content = result.value;
     }
   }
   if (content === null) {

@@ -7,9 +7,6 @@
     "dev": "wrangler pages dev . --kv TRY_KV --compatibility-date=2026-01-01",
     "test:crosscheck": "node scripts/test-crosscheck.mjs"
   },
-  "dependencies": {
-    "zod": "^3.25.0"
-  },
   "devDependencies": {
     "wrangler": "^4.0.0"
   }

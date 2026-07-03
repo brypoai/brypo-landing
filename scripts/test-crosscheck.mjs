@@ -36,7 +36,7 @@ import {
   parseJsonObject,
   sanitizeFlags,
   stripFences,
-  CONTENT_SCHEMAS,
+  CONTENT_VALIDATORS,
 } from "../functions/api/_lib.ts";
 import { CROSS_CHECK_SYSTEM_PROMPT } from "../functions/api/_prompts.ts";
 
@@ -178,16 +178,48 @@ t("KV key builders are UTC-stable", () => {
   eq(hourlyRateKey("abcdef0123456789", d), "ip:abcdef0123456789:2026070223");
 });
 
-console.log("unit: content schemas");
-t("customer schema accepts next_steps as string OR array", () => {
-  eq(CONTENT_SCHEMAS.customer.safeParse({ next_steps: "Ship it." }).success, true);
-  eq(CONTENT_SCHEMAS.customer.safeParse({ next_steps: ["Ship it."] }).success, true);
+console.log("unit: content validators");
+t("customer validator accepts next_steps as string OR array", () => {
+  eq(CONTENT_VALIDATORS.customer({ next_steps: "Ship it." }).ok, true);
+  eq(CONTENT_VALIDATORS.customer({ next_steps: ["Ship it."] }).ok, true);
 });
-t("sns schema accepts string and object posts", () => {
-  eq(
-    CONTENT_SCHEMAS.sns.safeParse({ hook: "h", thread: ["a", { text: "b" }] }).success,
-    true,
-  );
+t("sns validator accepts string and object posts", () => {
+  eq(CONTENT_VALIDATORS.sns({ hook: "h", thread: ["a", { text: "b" }] }).ok, true);
+});
+t("valid investor content passes and round-trips known fields", () => {
+  const r = CONTENT_VALIDATORS.investor({
+    subject: "June: $4,200 MRR",
+    greeting: "Hi all",
+    sections: [{ heading: "Highlights", body: "MRR up." }],
+    closing: "Cheers",
+  });
+  eq(r.ok, true);
+  eq(r.value.subject, "June: $4,200 MRR");
+  eq(r.value.sections, [{ heading: "Highlights", body: "MRR up." }]);
+});
+t("unknown / misnamed keys are stripped to {} (routes to raw fallback)", () => {
+  const r = CONTENT_VALIDATORS.investor({ investor_update: { subject: "x" }, foo: 1 });
+  eq(r.ok, true);
+  eq(Object.keys(r.value).length, 0);
+});
+t("wrong-typed present field fails the whole object (-> fallback)", () => {
+  eq(CONTENT_VALIDATORS.investor({ subject: 42 }).ok, false); // number, not string
+  eq(CONTENT_VALIDATORS.investor({ sections: "not an array" }).ok, false);
+  eq(CONTENT_VALIDATORS.investor({ sections: ["stringy element"] }).ok, false);
+  eq(CONTENT_VALIDATORS.customer({ next_steps: 5 }).ok, false);
+  eq(CONTENT_VALIDATORS.sns({ thread: [42] }).ok, false);
+});
+t("null present field fails (optional means absent, not null)", () => {
+  eq(CONTENT_VALIDATORS.investor({ subject: null }).ok, false);
+});
+t("non-object input fails", () => {
+  eq(CONTENT_VALIDATORS.investor("nope").ok, false);
+  eq(CONTENT_VALIDATORS.investor([1, 2]).ok, false);
+});
+t("empty object validates ok (caller's emptiness check handles fallback)", () => {
+  const r = CONTENT_VALIDATORS.internal({});
+  eq(r.ok, true);
+  eq(Object.keys(r.value).length, 0);
 });
 
 console.log(`\nunit result: ${passed} passed, ${failed} failed`);

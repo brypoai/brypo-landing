@@ -10,8 +10,6 @@
  * runL2OcrCrossCheck in supabase/functions/format-render/index.ts.
  */
 
-import { z } from "zod";
-
 // ---- constants -------------------------------------------------------------
 
 export const MODEL = "claude-haiku-4-5-20251001";
@@ -46,76 +44,156 @@ export function isFormatType(s: unknown): s is FormatType {
   );
 }
 
-// ---- per-format Zod schemas (ported from apps/web/lib/format-types.ts) -----
-// All fields optional / defensive: a missing or shape-shifted field should
-// degrade rendering, never crash it. One deliberate widening vs the app:
-// customer.next_steps accepts string OR string[] (the shipped prompt said
-// "2-3 sentences" while the shipped schema said array; /try prompts ask for
-// an array but we tolerate both).
+// ---- per-format validators (ported from apps/web/lib/format-types.ts) ------
+// Dependency-free replacements for the shipped per-format Zod schemas. The
+// static landing repo has no build step, so Cloudflare Pages bundles the
+// Function without running `npm install` — a bare `import "zod"` cannot be
+// resolved at deploy time. These validators reproduce the same semantics:
+//
+//   - every field is OPTIONAL: absent / undefined is fine and omitted from
+//     the result (mirrors Zod `.optional()`)
+//   - a PRESENT field with the wrong type (including null) fails the WHOLE
+//     object, so malformed output falls through to the content_raw /
+//     schema_fallback path exactly as before (Zod would `safeParse` false)
+//   - unknown keys are stripped (Zod default strip mode), so wrapped /
+//     misnamed output normalizes to {} and the caller's emptiness check
+//     routes it to the raw fallback
+//   - sub-element unions are preserved: SnsPost = string | { text? },
+//     HiringEntry = string | { title?, description? }
+//   - one deliberate widening vs the app: customer.next_steps accepts
+//     string OR string[] (the shipped prompt said "2-3 sentences" while the
+//     shipped schema said array; /try prompts ask for an array, we tolerate
+//     both)
 
-const InvestorSectionSchema = z.object({
-  heading: z.string().optional(),
-  body: z.string().optional(),
-});
+export type ContentResult =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false };
 
-const SnsPostSchema = z.union([
-  z.string(),
-  z.object({ text: z.string().optional() }),
-]);
+// Thrown internally when a present field has the wrong type; caught at the
+// validator boundary and turned into { ok: false } (the Zod-fail equivalent).
+class SchemaError extends Error {}
 
-const HiringEntrySchema = z.union([
-  z.string(),
-  z.object({
-    title: z.string().optional(),
-    description: z.string().optional(),
-  }),
-]);
+function asString(v: unknown): string {
+  if (typeof v === "string") return v;
+  throw new SchemaError();
+}
 
-export const InvestorContentSchema = z.object({
-  subject: z.string().optional(),
-  greeting: z.string().optional(),
-  sections: z.array(InvestorSectionSchema).optional(),
-  closing: z.string().optional(),
-});
+function asPlainObject(v: unknown): Record<string, unknown> {
+  if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+    return v as Record<string, unknown>;
+  }
+  throw new SchemaError();
+}
 
-export const SnsContentSchema = z.object({
-  hook: z.string().optional(),
-  thread: z.array(SnsPostSchema).optional(),
-});
+// Optional string: undefined stays undefined; any other non-string throws.
+function optString(v: unknown): string | undefined {
+  return v === undefined ? undefined : asString(v);
+}
 
-export const HiringContentSchema = z.object({
-  headline: z.string().optional(),
-  mission_summary: z.string().optional(),
-  team_culture: z.string().optional(),
-  recent_milestones: z.array(HiringEntrySchema).optional(),
-  open_roles: z.array(HiringEntrySchema).optional(),
-  application_link: z.string().optional(),
-});
+// Optional array whose elements are validated by `item`; non-array throws.
+function optArray<T>(v: unknown, item: (x: unknown) => T): T[] | undefined {
+  if (v === undefined) return undefined;
+  if (!Array.isArray(v)) throw new SchemaError();
+  return v.map(item);
+}
 
-export const CustomerContentSchema = z.object({
-  update_title: z.string().optional(),
-  since_last_update: z.string().optional(),
-  highlights: z.array(z.string()).optional(),
-  improvements: z.array(z.string()).optional(),
-  known_issues: z.array(z.string()).optional(),
-  next_steps: z.union([z.string(), z.array(z.string())]).optional(),
-  cta: z.string().optional(),
-});
+// Assign a validated optional value onto the output only when present, so
+// the result contains exactly the keys the input had (Zod strip parity).
+function put(out: Record<string, unknown>, key: string, value: unknown): void {
+  if (value !== undefined) out[key] = value;
+}
 
-export const InternalContentSchema = z.object({
-  period_summary: z.string().optional(),
-  key_events: z.array(z.string()).optional(),
-  decisions: z.array(z.string()).optional(),
-  open_questions: z.array(z.string()).optional(),
-  action_items: z.array(z.string()).optional(),
-});
+// SnsPost union: string | { text? }
+function snsPost(v: unknown): string | { text?: string } {
+  if (typeof v === "string") return v;
+  const o = asPlainObject(v);
+  const out: { text?: string } = {};
+  put(out, "text", optString(o.text));
+  return out;
+}
 
-export const CONTENT_SCHEMAS: Record<FormatType, z.ZodTypeAny> = {
-  investor: InvestorContentSchema,
-  sns: SnsContentSchema,
-  hiring: HiringContentSchema,
-  customer: CustomerContentSchema,
-  internal: InternalContentSchema,
+// HiringEntry union: string | { title?, description? }
+function hiringEntry(v: unknown): string | { title?: string; description?: string } {
+  if (typeof v === "string") return v;
+  const o = asPlainObject(v);
+  const out: { title?: string; description?: string } = {};
+  put(out, "title", optString(o.title));
+  put(out, "description", optString(o.description));
+  return out;
+}
+
+// InvestorSection: { heading?, body? } (must be an object, never a bare string)
+function investorSection(v: unknown): { heading?: string; body?: string } {
+  const o = asPlainObject(v);
+  const out: { heading?: string; body?: string } = {};
+  put(out, "heading", optString(o.heading));
+  put(out, "body", optString(o.body));
+  return out;
+}
+
+function validate(
+  input: unknown,
+  build: (o: Record<string, unknown>, out: Record<string, unknown>) => void,
+): ContentResult {
+  try {
+    const o = asPlainObject(input);
+    const out: Record<string, unknown> = {};
+    build(o, out);
+    return { ok: true, value: out };
+  } catch (err) {
+    if (err instanceof SchemaError) return { ok: false };
+    throw err;
+  }
+}
+
+export type ContentValidator = (input: unknown) => ContentResult;
+
+export const CONTENT_VALIDATORS: Record<FormatType, ContentValidator> = {
+  investor: (input) =>
+    validate(input, (o, out) => {
+      put(out, "subject", optString(o.subject));
+      put(out, "greeting", optString(o.greeting));
+      put(out, "sections", optArray(o.sections, investorSection));
+      put(out, "closing", optString(o.closing));
+    }),
+  sns: (input) =>
+    validate(input, (o, out) => {
+      put(out, "hook", optString(o.hook));
+      put(out, "thread", optArray(o.thread, snsPost));
+    }),
+  hiring: (input) =>
+    validate(input, (o, out) => {
+      put(out, "headline", optString(o.headline));
+      put(out, "mission_summary", optString(o.mission_summary));
+      put(out, "team_culture", optString(o.team_culture));
+      put(out, "recent_milestones", optArray(o.recent_milestones, hiringEntry));
+      put(out, "open_roles", optArray(o.open_roles, hiringEntry));
+      put(out, "application_link", optString(o.application_link));
+    }),
+  customer: (input) =>
+    validate(input, (o, out) => {
+      put(out, "update_title", optString(o.update_title));
+      put(out, "since_last_update", optString(o.since_last_update));
+      put(out, "highlights", optArray(o.highlights, asString));
+      put(out, "improvements", optArray(o.improvements, asString));
+      put(out, "known_issues", optArray(o.known_issues, asString));
+      // next_steps: string OR string[] (deliberate widening — see header).
+      if (o.next_steps !== undefined) {
+        out.next_steps =
+          typeof o.next_steps === "string"
+            ? o.next_steps
+            : optArray(o.next_steps, asString);
+      }
+      put(out, "cta", optString(o.cta));
+    }),
+  internal: (input) =>
+    validate(input, (o, out) => {
+      put(out, "period_summary", optString(o.period_summary));
+      put(out, "key_events", optArray(o.key_events, asString));
+      put(out, "decisions", optArray(o.decisions, asString));
+      put(out, "open_questions", optArray(o.open_questions, asString));
+      put(out, "action_items", optArray(o.action_items, asString));
+    }),
 };
 
 // ---- LLM output parsing (mirrors format-render/index.ts helpers) -----------

@@ -360,6 +360,24 @@ export function sanitizeFlags(
   return { flags, cross_check_skipped: false, skip_reason: null };
 }
 
+/**
+ * Build the cross-check user message. Lives here (not in the handler) so
+ * the tuning harness (scripts/test-crosscheck.mjs) exercises the exact
+ * shipped string — a drifted copy would silently stop testing production.
+ */
+export function buildCrossCheckUserMessage(
+  sourceText: string,
+  outputText: string,
+): string {
+  return (
+    `SOURCE TEXT (ground truth — the founder's pasted notes):\n` +
+    `<<<\n${sourceText}\n>>>\n\n` +
+    `OUTPUT TEXT (generated document to check):\n` +
+    `<<<\n${outputText}\n>>>\n\n` +
+    `Return the flags JSON object.`
+  );
+}
+
 // ---- cost ------------------------------------------------------------------
 
 /** Estimated cost in USD for one Anthropic call's token usage. */

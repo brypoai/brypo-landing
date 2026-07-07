@@ -8,7 +8,9 @@
  * Privacy discipline: pasted text is processed and discarded. It is
  * never stored (no DB, no KV values derived from content) and never
  * logged. The ONLY log line per request is
- *   { format_type, status, input_tokens, output_tokens, ms }.
+ *   { format_type, status, input_tokens, output_tokens, ms }
+ * plus content-free degradation metadata (upstream_status,
+ * schema_fallback, cross_check_skipped, cross_check_skip_reason).
  *
  * Cost controls, in order:
  *   1. TRY_TOOL_ENABLED kill switch (503 code=disabled)
@@ -34,6 +36,7 @@ import {
   HOURLY_IP_LIMIT,
   MAX_INPUT_CHARS,
   MODEL,
+  buildCrossCheckUserMessage,
   computeCostUsd,
   dailyUsageKey,
   flattenContentStrings,
@@ -218,9 +221,12 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     formatType: string,
     inputTokens: number,
     outputTokens: number,
+    extra?: Record<string, unknown>,
   ): Response => {
     // Logging discipline: metadata only — never source_text, never
-    // generated content, never raw IPs.
+    // generated content, never raw IPs. `extra` carries degradation
+    // signals (upstream status, schema_fallback, cross-check skip
+    // reason) so silent quality decay is visible in the logs.
     console.log(
       JSON.stringify({
         format_type: formatType,
@@ -228,6 +234,7 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         ms: Date.now() - t0,
+        ...extra,
       }),
     );
     return response;
@@ -363,6 +370,9 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
       formatType,
       0,
       0,
+      // 0 = network failure / timeout / unparseable body; otherwise the
+      // Anthropic HTTP status (429/529 = load, 4xx = our bug).
+      { upstream_status: gen.status },
     );
   }
   inputTokens += gen.input_tokens;
@@ -391,17 +401,19 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
   // 6. Text-only cross-check (never blocks the result).
   let flags: CrossCheckFlag[] = [];
   let crossCheckSkipped = !wantCrossCheck;
+  let crossCheckSkipReason: string | null = wantCrossCheck
+    ? null
+    : "client_opted_out";
   if (wantCrossCheck) {
     const flattened = content !== null ? flattenContentStrings(content) : "";
     if (flattened.length === 0) {
       crossCheckSkipped = true;
+      crossCheckSkipReason = "no_content_to_check";
     } else {
-      const checkUserMessage =
-        `SOURCE TEXT (ground truth — the founder's pasted notes):\n` +
-        `<<<\n${sourceText}\n>>>\n\n` +
-        `OUTPUT TEXT (generated document to check):\n` +
-        `<<<\n${flattened}\n>>>\n\n` +
-        `Return the flags JSON object.`;
+      const checkUserMessage = buildCrossCheckUserMessage(
+        sourceText,
+        flattened,
+      );
       const check = await callAnthropic(
         env.ANTHROPIC_API_KEY_TRY,
         CROSS_CHECK_SYSTEM_PROMPT,
@@ -411,12 +423,14 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
       );
       if (!check.ok) {
         crossCheckSkipped = true;
+        crossCheckSkipReason = `upstream_${check.status}`;
       } else {
         inputTokens += check.input_tokens;
         outputTokens += check.output_tokens;
         const sanitized = sanitizeFlags(check.text, flattened);
         flags = sanitized.flags;
         crossCheckSkipped = sanitized.cross_check_skipped;
+        crossCheckSkipReason = sanitized.skip_reason;
       }
     }
   }
@@ -446,7 +460,13 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     responseBody.content = content;
   }
 
-  return finish(json(responseBody, 200), formatType, inputTokens, outputTokens);
+  return finish(json(responseBody, 200), formatType, inputTokens, outputTokens, {
+    schema_fallback: schemaFallback,
+    cross_check_skipped: crossCheckSkipped,
+    ...(crossCheckSkipReason !== null
+      ? { cross_check_skip_reason: crossCheckSkipReason }
+      : {}),
+  });
 }
 
 // Anything that isn't POST gets a JSON 405 instead of falling through to

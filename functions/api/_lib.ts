@@ -26,14 +26,6 @@ export const OUTPUT_USD_PER_MTOK = 5;
 
 export type FormatType = "investor" | "sns" | "hiring" | "customer" | "internal";
 
-export const FORMAT_TYPES: FormatType[] = [
-  "investor",
-  "sns",
-  "hiring",
-  "customer",
-  "internal",
-];
-
 export function isFormatType(s: unknown): s is FormatType {
   return (
     s === "investor" ||
@@ -388,11 +380,6 @@ export function computeCostUsd(
 /** usage:YYYY-MM-DD — daily spend accumulator (UTC day). */
 export function dailyUsageKey(now: Date): string {
   return `usage:${now.toISOString().slice(0, 10)}`;
-}
-
-/** usage:YYYY-MM — monthly spend accumulator (UTC month). */
-export function monthlyUsageKey(now: Date): string {
-  return `usage:${now.toISOString().slice(0, 7)}`;
 }
 
 /** ip:{hash16}:{yyyymmddhh} — hourly per-IP counter (UTC hour). */

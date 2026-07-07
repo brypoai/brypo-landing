@@ -17,8 +17,9 @@
  *   (c) tone/hype/plans only: OUTPUT has no specific factual claims.
  *       MUST produce 0 flags.
  *
- * Requires Node >= 23.6 (type-stripped .ts imports) and `npm install`
- * (zod). Uses the same request shape as functions/api/try-generate.ts.
+ * Requires Node >= 23.6 (type-stripped .ts imports). No dependencies —
+ * the validators are hand-rolled (zod was dropped so the Pages Function
+ * bundles without npm install). Same request shape as try-generate.ts.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,7 +33,6 @@ import {
   dailyUsageKey,
   flattenContentStrings,
   hourlyRateKey,
-  monthlyUsageKey,
   parseJsonObject,
   sanitizeFlags,
   stripFences,
@@ -174,7 +174,6 @@ t("computeCostUsd tolerates junk", () => {
 t("KV key builders are UTC-stable", () => {
   const d = new Date("2026-07-02T23:59:59Z");
   eq(dailyUsageKey(d), "usage:2026-07-02");
-  eq(monthlyUsageKey(d), "usage:2026-07");
   eq(hourlyRateKey("abcdef0123456789", d), "ip:abcdef0123456789:2026070223");
 });
 

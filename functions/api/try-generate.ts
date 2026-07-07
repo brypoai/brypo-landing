@@ -17,10 +17,14 @@
  *   4. KV hourly per-IP backstop rate limit, independent of the zone
  *      WAF rule (429 code=rate_limit); IPs are stored only as a
  *      truncated SHA-256 hash, never raw
- *   5. spend accumulation into usage:YYYY-MM-DD and usage:YYYY-MM.
- *      KV read-modify-write races can undercount slightly at this
- *      scale — accepted; the WAF rule + hourly limit bound the blast
- *      radius and the Anthropic key itself carries a $50/mo hard cap.
+ *   5. spend accumulation into usage:YYYY-MM-DD. KV read-modify-write
+ *      races can undercount slightly at this scale — accepted; the WAF
+ *      rule + hourly limit bound the blast radius and the Anthropic key
+ *      itself carries a $50/mo hard cap. (The monthly usage:YYYY-MM key
+ *      was dropped: nothing read it, and at 3 puts/request the free
+ *      plan's 1,000 writes/day quota was exhausted after ~66 full
+ *      5-format runs, silently fail-opening both KV gates. Monthly
+ *      spend is visible in the Anthropic console.)
  */
 
 import {
@@ -35,7 +39,6 @@ import {
   flattenContentStrings,
   hourlyRateKey,
   isFormatType,
-  monthlyUsageKey,
   parseJsonObject,
   sanitizeFlags,
   stripFences,
@@ -172,24 +175,15 @@ async function ipHash16(ip: string): Promise<string> {
 // ---- spend accumulation --------------------------------------------------------
 
 const DAILY_KEY_TTL_S = 3 * 24 * 3600;
-const MONTHLY_KEY_TTL_S = 62 * 24 * 3600;
 const RATE_KEY_TTL_S = 2 * 3600;
 
 async function accumulateSpend(kv: KVNamespace, now: Date, costUsd: number) {
   // Read-modify-write; concurrent requests can drop an increment (KV has
   // no atomic counters). Accepted at this traffic scale — see header.
   const dayKey = dailyUsageKey(now);
-  const monthKey = monthlyUsageKey(now);
-  const [dayRaw, monthRaw] = await Promise.all([
-    kv.get(dayKey),
-    kv.get(monthKey),
-  ]);
+  const dayRaw = await kv.get(dayKey);
   const day = (parseFloat(dayRaw ?? "0") || 0) + costUsd;
-  const month = (parseFloat(monthRaw ?? "0") || 0) + costUsd;
-  await Promise.all([
-    kv.put(dayKey, day.toFixed(6), { expirationTtl: DAILY_KEY_TTL_S }),
-    kv.put(monthKey, month.toFixed(6), { expirationTtl: MONTHLY_KEY_TTL_S }),
-  ]);
+  await kv.put(dayKey, day.toFixed(6), { expirationTtl: DAILY_KEY_TTL_S });
 }
 
 // ---- handler -------------------------------------------------------------------
@@ -427,7 +421,7 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     }
   }
 
-  // 7. Accumulate spend (daily + monthly, UTC).
+  // 7. Accumulate spend (daily, UTC).
   const costUsd = computeCostUsd(inputTokens, outputTokens);
   try {
     await accumulateSpend(env.TRY_KV, now, costUsd);

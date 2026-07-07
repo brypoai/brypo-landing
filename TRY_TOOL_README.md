@@ -21,8 +21,8 @@ brypo.com (Cloudflare Pages, this repo, static + functions)
   `claude-haiku-4-5-20251001` ($1/M input, $5/M output).
 - Server flow per request: kill switch → validation (400/413) → KV daily
   budget gate → hashed-IP hourly backstop rate limit (60/hr) → generation
-  (Zod `safeParse`, raw-text fallback on schema failure) → cross-check
-  (never blocks; verbatim claim guard) → spend accumulation.
+  (dependency-free validators, raw-text fallback on schema failure) →
+  cross-check (never blocks; verbatim claim guard) → spend accumulation.
 - Generation prompts are lifted from the app engine
   (`supabase/functions/format-render/index.ts`) with the provenance
   contract (`included_fact_ids` / `numbers_used`) removed; the cross-check
@@ -97,6 +97,13 @@ Set all four for **both Production and Preview**.
   taking the endpoint down. The WAF rule and the Anthropic key's $50/mo
   hard cap remain enforced regardless; flip `TRY_TOOL_ENABLED=false` if
   spend must stop immediately during a KV outage.
+- **KV write quota vs traffic**: each successful request performs 2 KV
+  puts (rate counter + daily spend), so the free plan's 1,000 writes/day
+  supports ~500 requests ≈ ~100 full 5-format runs before both gates
+  fail open for the rest of the day (the monthly spend key was removed
+  to stretch this from ~66 runs). If launch traffic should approach
+  `DAILY_BUDGET_USD=25` ≈ 250 runs/day, upgrading to the Workers paid
+  plan is a launch prerequisite.
 - **Upstream timeouts**: generation calls abort at 60s, cross-check at
   30s (→ 502 `upstream` / `cross_check_skipped`), so a hung upstream
   can't stall requests indefinitely.

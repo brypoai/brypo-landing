@@ -26,14 +26,6 @@ export const OUTPUT_USD_PER_MTOK = 5;
 
 export type FormatType = "investor" | "sns" | "hiring" | "customer" | "internal";
 
-export const FORMAT_TYPES: FormatType[] = [
-  "investor",
-  "sns",
-  "hiring",
-  "customer",
-  "internal",
-];
-
 export function isFormatType(s: unknown): s is FormatType {
   return (
     s === "investor" ||
@@ -368,6 +360,24 @@ export function sanitizeFlags(
   return { flags, cross_check_skipped: false, skip_reason: null };
 }
 
+/**
+ * Build the cross-check user message. Lives here (not in the handler) so
+ * the tuning harness (scripts/test-crosscheck.mjs) exercises the exact
+ * shipped string — a drifted copy would silently stop testing production.
+ */
+export function buildCrossCheckUserMessage(
+  sourceText: string,
+  outputText: string,
+): string {
+  return (
+    `SOURCE TEXT (ground truth — the founder's pasted notes):\n` +
+    `<<<\n${sourceText}\n>>>\n\n` +
+    `OUTPUT TEXT (generated document to check):\n` +
+    `<<<\n${outputText}\n>>>\n\n` +
+    `Return the flags JSON object.`
+  );
+}
+
 // ---- cost ------------------------------------------------------------------
 
 /** Estimated cost in USD for one Anthropic call's token usage. */
@@ -388,11 +398,6 @@ export function computeCostUsd(
 /** usage:YYYY-MM-DD — daily spend accumulator (UTC day). */
 export function dailyUsageKey(now: Date): string {
   return `usage:${now.toISOString().slice(0, 10)}`;
-}
-
-/** usage:YYYY-MM — monthly spend accumulator (UTC month). */
-export function monthlyUsageKey(now: Date): string {
-  return `usage:${now.toISOString().slice(0, 7)}`;
 }
 
 /** ip:{hash16}:{yyyymmddhh} — hourly per-IP counter (UTC hour). */

@@ -8,7 +8,9 @@
  * Privacy discipline: pasted text is processed and discarded. It is
  * never stored (no DB, no KV values derived from content) and never
  * logged. The ONLY log line per request is
- *   { format_type, status, input_tokens, output_tokens, ms }.
+ *   { format_type, status, input_tokens, output_tokens, ms }
+ * plus content-free degradation metadata (upstream_status,
+ * schema_fallback, cross_check_skipped, cross_check_skip_reason).
  *
  * Cost controls, in order:
  *   1. TRY_TOOL_ENABLED kill switch (503 code=disabled)
@@ -17,10 +19,14 @@
  *   4. KV hourly per-IP backstop rate limit, independent of the zone
  *      WAF rule (429 code=rate_limit); IPs are stored only as a
  *      truncated SHA-256 hash, never raw
- *   5. spend accumulation into usage:YYYY-MM-DD and usage:YYYY-MM.
- *      KV read-modify-write races can undercount slightly at this
- *      scale — accepted; the WAF rule + hourly limit bound the blast
- *      radius and the Anthropic key itself carries a $50/mo hard cap.
+ *   5. spend accumulation into usage:YYYY-MM-DD. KV read-modify-write
+ *      races can undercount slightly at this scale — accepted; the WAF
+ *      rule + hourly limit bound the blast radius and the Anthropic key
+ *      itself carries a $50/mo hard cap. (The monthly usage:YYYY-MM key
+ *      was dropped: nothing read it, and at 3 puts/request the free
+ *      plan's 1,000 writes/day quota was exhausted after ~66 full
+ *      5-format runs, silently fail-opening both KV gates. Monthly
+ *      spend is visible in the Anthropic console.)
  */
 
 import {
@@ -30,12 +36,12 @@ import {
   HOURLY_IP_LIMIT,
   MAX_INPUT_CHARS,
   MODEL,
+  buildCrossCheckUserMessage,
   computeCostUsd,
   dailyUsageKey,
   flattenContentStrings,
   hourlyRateKey,
   isFormatType,
-  monthlyUsageKey,
   parseJsonObject,
   sanitizeFlags,
   stripFences,
@@ -172,24 +178,15 @@ async function ipHash16(ip: string): Promise<string> {
 // ---- spend accumulation --------------------------------------------------------
 
 const DAILY_KEY_TTL_S = 3 * 24 * 3600;
-const MONTHLY_KEY_TTL_S = 62 * 24 * 3600;
 const RATE_KEY_TTL_S = 2 * 3600;
 
 async function accumulateSpend(kv: KVNamespace, now: Date, costUsd: number) {
   // Read-modify-write; concurrent requests can drop an increment (KV has
   // no atomic counters). Accepted at this traffic scale — see header.
   const dayKey = dailyUsageKey(now);
-  const monthKey = monthlyUsageKey(now);
-  const [dayRaw, monthRaw] = await Promise.all([
-    kv.get(dayKey),
-    kv.get(monthKey),
-  ]);
+  const dayRaw = await kv.get(dayKey);
   const day = (parseFloat(dayRaw ?? "0") || 0) + costUsd;
-  const month = (parseFloat(monthRaw ?? "0") || 0) + costUsd;
-  await Promise.all([
-    kv.put(dayKey, day.toFixed(6), { expirationTtl: DAILY_KEY_TTL_S }),
-    kv.put(monthKey, month.toFixed(6), { expirationTtl: MONTHLY_KEY_TTL_S }),
-  ]);
+  await kv.put(dayKey, day.toFixed(6), { expirationTtl: DAILY_KEY_TTL_S });
 }
 
 // ---- handler -------------------------------------------------------------------
@@ -224,9 +221,12 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     formatType: string,
     inputTokens: number,
     outputTokens: number,
+    extra?: Record<string, unknown>,
   ): Response => {
     // Logging discipline: metadata only — never source_text, never
-    // generated content, never raw IPs.
+    // generated content, never raw IPs. `extra` carries degradation
+    // signals (upstream status, schema_fallback, cross-check skip
+    // reason) so silent quality decay is visible in the logs.
     console.log(
       JSON.stringify({
         format_type: formatType,
@@ -234,6 +234,7 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
         input_tokens: inputTokens,
         output_tokens: outputTokens,
         ms: Date.now() - t0,
+        ...extra,
       }),
     );
     return response;
@@ -369,6 +370,9 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
       formatType,
       0,
       0,
+      // 0 = network failure / timeout / unparseable body; otherwise the
+      // Anthropic HTTP status (429/529 = load, 4xx = our bug).
+      { upstream_status: gen.status },
     );
   }
   inputTokens += gen.input_tokens;
@@ -397,17 +401,19 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
   // 6. Text-only cross-check (never blocks the result).
   let flags: CrossCheckFlag[] = [];
   let crossCheckSkipped = !wantCrossCheck;
+  let crossCheckSkipReason: string | null = wantCrossCheck
+    ? null
+    : "client_opted_out";
   if (wantCrossCheck) {
     const flattened = content !== null ? flattenContentStrings(content) : "";
     if (flattened.length === 0) {
       crossCheckSkipped = true;
+      crossCheckSkipReason = "no_content_to_check";
     } else {
-      const checkUserMessage =
-        `SOURCE TEXT (ground truth — the founder's pasted notes):\n` +
-        `<<<\n${sourceText}\n>>>\n\n` +
-        `OUTPUT TEXT (generated document to check):\n` +
-        `<<<\n${flattened}\n>>>\n\n` +
-        `Return the flags JSON object.`;
+      const checkUserMessage = buildCrossCheckUserMessage(
+        sourceText,
+        flattened,
+      );
       const check = await callAnthropic(
         env.ANTHROPIC_API_KEY_TRY,
         CROSS_CHECK_SYSTEM_PROMPT,
@@ -417,17 +423,19 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
       );
       if (!check.ok) {
         crossCheckSkipped = true;
+        crossCheckSkipReason = `upstream_${check.status}`;
       } else {
         inputTokens += check.input_tokens;
         outputTokens += check.output_tokens;
         const sanitized = sanitizeFlags(check.text, flattened);
         flags = sanitized.flags;
         crossCheckSkipped = sanitized.cross_check_skipped;
+        crossCheckSkipReason = sanitized.skip_reason;
       }
     }
   }
 
-  // 7. Accumulate spend (daily + monthly, UTC).
+  // 7. Accumulate spend (daily, UTC).
   const costUsd = computeCostUsd(inputTokens, outputTokens);
   try {
     await accumulateSpend(env.TRY_KV, now, costUsd);
@@ -452,7 +460,13 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     responseBody.content = content;
   }
 
-  return finish(json(responseBody, 200), formatType, inputTokens, outputTokens);
+  return finish(json(responseBody, 200), formatType, inputTokens, outputTokens, {
+    schema_fallback: schemaFallback,
+    cross_check_skipped: crossCheckSkipped,
+    ...(crossCheckSkipReason !== null
+      ? { cross_check_skip_reason: crossCheckSkipReason }
+      : {}),
+  });
 }
 
 // Anything that isn't POST gets a JSON 405 instead of falling through to

@@ -586,6 +586,63 @@ body.tips-dismissed mark.flagged:hover::after { display: none; }
 }
 .retry-btn:hover { background: var(--accent); color: var(--bg); }
 
+/* ===== Auto-publish (owner) ===== */
+.publish-panel {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  max-width: 640px;
+  margin: 0 0 clamp(1.5rem, 3vw, 2rem);
+  background: var(--bg-soft);
+}
+.publish-panel > summary {
+  cursor: pointer;
+  padding: 0.7rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+}
+.publish-panel > summary::marker { color: var(--accent); }
+.publish-body { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+.publish-note { font-size: 12.5px; color: var(--muted-hi); max-width: 52ch; }
+.publish-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 12px; color: var(--fg-soft); }
+.publish-field input {
+  padding: 0.55rem 0.7rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.publish-channels { border: 1px solid var(--line); border-radius: 4px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.publish-channels legend { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-hi); padding: 0 0.3rem; }
+.publish-channels label { font-size: 12.5px; color: var(--fg-soft); display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; }
+.publish-hint { font-size: 12px; color: var(--muted-hi); min-height: 1em; }
+.publish-hint.ok { color: var(--accent); }
+.publish-hint.err { color: #d66; }
+.card-publish {
+  margin-top: 0.7rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.card-publish:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+.card-publish:disabled { opacity: 0.55; cursor: default; }
+.results:not(.publish-on) .card-publish-wrap { display: none; }
+.card-publish-status { margin-top: 0.4rem; font-size: 12px; color: var(--fg-soft); }
+.card-publish-status.ok { color: var(--accent); }
+.card-publish-status.err { color: #d66; }
+
 /* ===== Conversion block ===== */
 .conversion {
   border: 1px solid var(--line);
@@ -731,6 +788,29 @@ footer .copyright { text-transform: uppercase; }
   <!-- Results -->
   <section class="results" id="results" tabindex="-1" aria-label="Generated write-ups"></section>
 
+  <!-- Owner-only auto-publish. Hidden from the public tool by default: it
+       only does anything once the owner pastes the publish token, which the
+       server checks against PUBLISH_TOKEN before touching any account. -->
+  <details class="publish-panel" id="publish-panel">
+    <summary>Auto-publish (owner)</summary>
+    <div class="publish-body">
+      <p class="publish-note">
+        Owner-only. Paste your publish token to turn on a &ldquo;Publish&rdquo;
+        button on each card. Posts go live immediately &mdash; no review step.
+      </p>
+      <label class="publish-field">
+        <span>Publish token</span>
+        <input type="password" id="publish-token" autocomplete="off" spellcheck="false" placeholder="PUBLISH_TOKEN">
+      </label>
+      <fieldset class="publish-channels">
+        <legend>Channels</legend>
+        <label><input type="checkbox" id="ch-x" checked> X (Twitter)</label>
+        <label><input type="checkbox" id="ch-webhook"> Webhook (note / LinkedIn / TikTok / YouTube via Zapier&nbsp;/&nbsp;Make)</label>
+      </fieldset>
+      <p class="publish-hint" id="publish-hint"></p>
+    </div>
+  </details>
+
   <!-- Conversion block (revealed after first card resolves) -->
   <aside class="conversion" id="conversion" hidden>
     <p>
@@ -804,7 +884,11 @@ footer .copyright { text-transform: uppercase; }
     pageState: document.getElementById('page-state'),
     results: document.getElementById('results'),
     conversion: document.getElementById('conversion'),
-    srStatus: document.getElementById('sr-status')
+    srStatus: document.getElementById('sr-status'),
+    publishToken: document.getElementById('publish-token'),
+    publishHint: document.getElementById('publish-hint'),
+    chX: document.getElementById('ch-x'),
+    chWebhook: document.getElementById('ch-webhook')
   };
 
   var state = {
@@ -813,7 +897,10 @@ footer .copyright { text-transform: uppercase; }
     lastSourceText: '',
     halted: false,
     shownCode: null,
-    rendered: 0
+    rendered: 0,
+    // Publishable content stashed per card so the owner "Publish" button can
+    // re-send the exact generated object to /api/publish.
+    cardData: {}
   };
 
   function announce(msg) {
@@ -1053,6 +1140,22 @@ footer .copyright { text-transform: uppercase; }
     }
     html += flagsDetails(flags);
     body.innerHTML = '<div class="card-content">' + html + '</div>';
+
+    // Stash the generated object for the owner Publish button. Raw-fallback
+    // cards (no structured content) can't be published — skip them.
+    var publishable = !data.schema_fallback && data.content && typeof data.content === 'object';
+    if (publishable) {
+      state.cardData[fmt.key] = { format_type: fmt.key, content: data.content };
+      var wrap = document.createElement('div');
+      wrap.className = 'card-publish-wrap';
+      wrap.innerHTML =
+        '<button type="button" class="card-publish" data-format="' + esc(fmt.key) + '">Publish</button>' +
+        '<p class="card-publish-status" data-format="' + esc(fmt.key) + '" role="status" aria-live="polite"></p>';
+      body.querySelector('.card-content').appendChild(wrap);
+    } else {
+      delete state.cardData[fmt.key];
+    }
+
     state.rendered += 1;
     var n = flags.length;
     announce(fmt.label + ' ready' +
@@ -1203,6 +1306,7 @@ footer .copyright { text-transform: uppercase; }
     els.hint.textContent = selected.length + ' format' + (selected.length !== 1 ? 's' : '') + ' selected';
     state.lastSourceText = text;
     state.rendered = 0;
+    state.cardData = {};
     clearPageState();
     els.results.innerHTML = '';
     selected.forEach(function (f) { els.results.appendChild(makeCard(f)); });
@@ -1270,6 +1374,97 @@ footer .copyright { text-transform: uppercase; }
       card.focus();
     }
     fetchFormat(fmt);
+  });
+
+  // ---- owner auto-publish ---------------------------------------------------
+
+  // Token presence alone flips publish mode on (and reveals the per-card
+  // buttons). The token is kept only in memory — never persisted — and is
+  // sent in a header, so it never lands in a request body log.
+  function syncPublishMode() {
+    var on = els.publishToken.value.trim().length > 0;
+    els.results.classList.toggle('publish-on', on);
+  }
+  els.publishToken.addEventListener('input', syncPublishMode);
+
+  function selectedChannels() {
+    var chs = [];
+    if (els.chX.checked) chs.push('x');
+    if (els.chWebhook.checked) chs.push('webhook');
+    return chs;
+  }
+
+  function publishCard(fmt, btn, statusEl) {
+    var token = els.publishToken.value.trim();
+    if (token.length === 0) { setPublishHint('Paste your publish token first.', 'err'); return; }
+    var channels = selectedChannels();
+    if (channels.length === 0) { setPublishHint('Pick at least one channel.', 'err'); return; }
+    var payload = state.cardData[fmt.key];
+    if (!payload) { setStatus(statusEl, 'Nothing to publish for this card.', 'err'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'Publishing…';
+    setStatus(statusEl, 'Publishing to ' + channels.join(', ') + '…', '');
+
+    fetch('/api/publish', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-publish-token': token },
+      body: JSON.stringify({
+        format_type: payload.format_type,
+        content: payload.content,
+        channels: channels
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401) {
+          setStatus(statusEl, 'Rejected: invalid publish token.', 'err');
+          return;
+        }
+        if (res.status === 503) {
+          setStatus(statusEl, 'Publishing is disabled on the server.', 'err');
+          return;
+        }
+        if (!data || !Array.isArray(data.results)) {
+          setStatus(statusEl, (data && data.error) || 'Publish failed.', 'err');
+          return;
+        }
+        var parts = data.results.map(function (r) {
+          var name = r.channel === 'x' ? 'X' : 'Webhook';
+          if (r.ok) {
+            return '✓ ' + name + (r.url ? ' — ' + r.url : (r.detail ? ' (' + r.detail + ')' : ''));
+          }
+          return '✗ ' + name + ': ' + (r.detail || 'failed');
+        });
+        setStatus(statusEl, parts.join('  •  '), data.ok ? 'ok' : 'err');
+        announce(fmt.label + (data.ok ? ' published.' : ' publish had errors.'));
+      });
+    }).catch(function () {
+      setStatus(statusEl, 'Network error while publishing.', 'err');
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = 'Publish';
+    });
+  }
+
+  function setPublishHint(msg, cls) {
+    els.publishHint.textContent = msg;
+    els.publishHint.className = 'publish-hint' + (cls ? ' ' + cls : '');
+  }
+  function setStatus(el, msg, cls) {
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'card-publish-status' + (cls ? ' ' + cls : '');
+  }
+
+  // Publish (delegated)
+  els.results.addEventListener('click', function (e) {
+    var btn = e.target.closest('.card-publish');
+    if (!btn) return;
+    var key = btn.getAttribute('data-format');
+    var fmt = FORMATS.find(function (f) { return f.key === key; });
+    if (!fmt) return;
+    var statusEl = els.results.querySelector('.card-publish-status[data-format="' + key + '"]');
+    publishCard(fmt, btn, statusEl);
   });
 
   // Esc dismisses flag tooltips (WCAG 1.4.13): blur a focused mark,

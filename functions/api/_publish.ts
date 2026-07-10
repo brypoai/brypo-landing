@@ -12,7 +12,7 @@
  * can be handed straight to a publish channel without reshaping.
  */
 
-import type { FormatType } from "./_lib";
+import type { FormatType, Language } from "./_lib";
 
 // ---- constants --------------------------------------------------------------
 
@@ -41,6 +41,23 @@ interface Line {
   text: string;
 }
 
+// Bilingual labels for the structured bullets. Keyed by a stable slug so the
+// switch below reads the same in both languages; the display string is chosen
+// at render time from the requested output language.
+const LABELS: Record<string, { en: string; ja: string }> = {
+  milestone: { en: "Milestone", ja: "マイルストーン" },
+  role: { en: "Role", ja: "募集ポジション" },
+  apply: { en: "Apply", ja: "応募" },
+  highlight: { en: "Highlight", ja: "ハイライト" },
+  improved: { en: "Improved", ja: "改善" },
+  known_issue: { en: "Known issue", ja: "既知の問題" },
+  next: { en: "Next", ja: "次のステップ" },
+  event: { en: "Event", ja: "出来事" },
+  decision: { en: "Decision", ja: "決定事項" },
+  question: { en: "Question", ja: "オープンな論点" },
+  action: { en: "Action", ja: "アクション" },
+};
+
 function str(v: unknown): string | null {
   return typeof v === "string" && v.trim().length > 0 ? v.trim() : null;
 }
@@ -68,13 +85,18 @@ function strList(v: unknown): string[] {
 export function contentToLines(
   formatType: FormatType,
   content: Record<string, unknown>,
+  lang: Language = "en",
 ): Line[] {
   const c = content;
   const lines: Line[] = [];
+  // Resolve a label slug to its display string in the requested language.
+  const lab = (slug: keyof typeof LABELS | (string & {})): string =>
+    LABELS[slug] ? LABELS[slug][lang] : String(slug);
   const push = (text: string | null, label?: string) => {
     if (text !== null) lines.push(label ? { label, text } : { text });
   };
-  const pushList = (v: unknown, label?: string) => {
+  const pushList = (v: unknown, labelSlug?: keyof typeof LABELS) => {
+    const label = labelSlug ? lab(labelSlug) : undefined;
     for (const item of strList(v)) push(item, label);
   };
 
@@ -85,6 +107,8 @@ export function contentToLines(
       for (const s of Array.isArray(c.sections) ? c.sections : []) {
         if (s && typeof s === "object") {
           const o = s as Record<string, unknown>;
+          // Section headings come from the model in the output language
+          // already, so they're used verbatim (not looked up in LABELS).
           push(str(o.body), str(o.heading) ?? undefined);
         }
       }
@@ -100,28 +124,28 @@ export function contentToLines(
       push(str(c.headline));
       push(str(c.mission_summary));
       push(str(c.team_culture));
-      pushList(c.recent_milestones, "Milestone");
-      pushList(c.open_roles, "Role");
-      push(str(c.application_link), "Apply");
+      pushList(c.recent_milestones, "milestone");
+      pushList(c.open_roles, "role");
+      push(str(c.application_link), lab("apply"));
       break;
     }
     case "customer": {
       push(str(c.update_title));
       push(str(c.since_last_update));
-      pushList(c.highlights, "Highlight");
-      pushList(c.improvements, "Improved");
-      pushList(c.known_issues, "Known issue");
-      if (typeof c.next_steps === "string") push(str(c.next_steps), "Next");
-      else pushList(c.next_steps, "Next");
+      pushList(c.highlights, "highlight");
+      pushList(c.improvements, "improved");
+      pushList(c.known_issues, "known_issue");
+      if (typeof c.next_steps === "string") push(str(c.next_steps), lab("next"));
+      else pushList(c.next_steps, "next");
       push(str(c.cta));
       break;
     }
     case "internal": {
       push(str(c.period_summary));
-      pushList(c.key_events, "Event");
-      pushList(c.decisions, "Decision");
-      pushList(c.open_questions, "Question");
-      pushList(c.action_items, "Action");
+      pushList(c.key_events, "event");
+      pushList(c.decisions, "decision");
+      pushList(c.open_questions, "question");
+      pushList(c.action_items, "action");
       break;
     }
   }
@@ -142,8 +166,12 @@ function renderLine(l: Line): string {
 export function toPlainText(
   formatType: FormatType,
   content: Record<string, unknown>,
+  lang: Language = "en",
 ): string {
-  return contentToLines(formatType, content).map(renderLine).join("\n\n").trim();
+  return contentToLines(formatType, content, lang)
+    .map(renderLine)
+    .join("\n\n")
+    .trim();
 }
 
 // ---- X thread ---------------------------------------------------------------
@@ -180,8 +208,9 @@ export function chunkText(text: string, limit: number = TWEET_LIMIT): string[] {
 export function toXThread(
   formatType: FormatType,
   content: Record<string, unknown>,
+  lang: Language = "en",
 ): string[] {
-  const lines = contentToLines(formatType, content);
+  const lines = contentToLines(formatType, content, lang);
 
   let tweets: string[];
   if (formatType === "sns") {

@@ -23,8 +23,8 @@
  * token are never logged.
  */
 
-import { isFormatType } from "./_lib";
-import type { FormatType } from "./_lib";
+import { isFormatType, toLanguage } from "./_lib";
+import type { FormatType, Language } from "./_lib";
 import {
   buildOAuth1Header,
   isChannel,
@@ -133,6 +133,7 @@ async function publishToX(
   env: Env,
   formatType: FormatType,
   content: Record<string, unknown>,
+  lang: Language,
 ): Promise<ChannelResult> {
   const creds: OAuth1Creds = {
     consumerKey: env.X_API_KEY ?? "",
@@ -149,7 +150,7 @@ async function publishToX(
     return { channel: "x", ok: false, detail: "X credentials not configured" };
   }
 
-  const tweets = toXThread(formatType, content);
+  const tweets = toXThread(formatType, content, lang);
   if (tweets.length === 0) {
     return { channel: "x", ok: false, detail: "nothing to post (empty content)" };
   }
@@ -190,12 +191,13 @@ async function publishToWebhook(
   env: Env,
   formatType: FormatType,
   content: Record<string, unknown>,
+  lang: Language,
 ): Promise<ChannelResult> {
   const url = env.PUBLISH_WEBHOOK_URL;
   if (!url) {
     return { channel: "webhook", ok: false, detail: "PUBLISH_WEBHOOK_URL not configured" };
   }
-  const text = toPlainText(formatType, content);
+  const text = toPlainText(formatType, content, lang);
   if (text.length === 0) {
     return { channel: "webhook", ok: false, detail: "nothing to post (empty content)" };
   }
@@ -204,7 +206,7 @@ async function publishToWebhook(
     res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ format_type: formatType, text, content }),
+      body: JSON.stringify({ format_type: formatType, language: lang, text, content }),
       signal: AbortSignal.timeout(20_000),
     });
   } catch {
@@ -276,6 +278,9 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   }
   const contentObj = content as Record<string, unknown>;
 
+  // Output language for labels (defaults to English for back-compat).
+  const lang: Language = toLanguage(body?.language);
+
   // 5. Channels.
   const rawChannels = Array.isArray(body?.channels) ? body.channels : [];
   const channels = rawChannels.filter(isChannel) as Channel[];
@@ -291,8 +296,8 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const results = await Promise.all(
     uniqueChannels.map((ch) =>
       ch === "x"
-        ? publishToX(env, formatType, contentObj)
-        : publishToWebhook(env, formatType, contentObj),
+        ? publishToX(env, formatType, contentObj, lang)
+        : publishToWebhook(env, formatType, contentObj, lang),
     ),
   );
 

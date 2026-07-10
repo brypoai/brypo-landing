@@ -30,6 +30,29 @@ brypo.com (Cloudflare Pages, this repo, static + functions)
   of OCR).
 - The Next.js app (Vercel) and Supabase are untouched. No DB anywhere.
 
+### Language (日英両対応)
+
+The tool is bilingual (English / 日本語). A language toggle in the page
+header switches **both** the UI chrome and the generation output language;
+the choice is persisted in `localStorage` and defaults to the browser
+language (`navigator.language`).
+
+- **UI**: `try/index.html` carries an `I18N` dictionary (`en` / `ja`) and a
+  `t(key)` helper. Static elements are tagged `data-i18n` /
+  `data-i18n-html` / `data-i18n-placeholder`; dynamic strings and card
+  chrome (section headings, cross-check strip, statuses) go through `t()`.
+- **Generation**: the page sends `language: "en" | "ja"` on
+  `/api/try-generate`. Rather than a translated prompt per format, the
+  server appends a short `LANGUAGE` directive (`languageDirective` in
+  `_lib.ts`) that fixes every JSON string *value* to the chosen language
+  while keeping the schema *keys* in English. The cross-check gets the
+  matching `crossCheckLanguageDirective` (its verbatim `claim_text` guard
+  already carries the output language). `language` defaults to `"en"` when
+  absent, so pre-existing callers are unaffected.
+- **Publishing**: `/api/publish` takes the same `language`; the structured
+  bullet labels (`Milestone` → `マイルストーン`, etc.) are localized in
+  `_publish.ts` while model-authored text stays as generated.
+
 ### Privacy
 
 Pasted text is processed and discarded: never stored, never logged. The
@@ -102,7 +125,7 @@ confirm*.
 | Channel   | What it does | Reaches |
 |-----------|--------------|---------|
 | `x`       | Native X API v2, OAuth 1.0a. Content is flowed into a **numbered thread**; each tweet replies to the previous. | X (Twitter) |
-| `webhook` | POSTs `{ format_type, text, content }` to `PUBLISH_WEBHOOK_URL`. | **note, LinkedIn, TikTok, YouTube, blog, …** via a Zapier / Make / n8n scenario you own |
+| `webhook` | POSTs `{ format_type, language, text, content }` to `PUBLISH_WEBHOOK_URL`. | **note, LinkedIn, TikTok, YouTube, blog, …** via a Zapier / Make / n8n scenario you own |
 
 **Honest reality on the other platforms you asked about:**
 

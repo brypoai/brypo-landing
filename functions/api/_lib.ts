@@ -36,6 +36,61 @@ export function isFormatType(s: unknown): s is FormatType {
   );
 }
 
+// ---- output language (日英両対応) ------------------------------------------
+// The generation prompts are authored in English; rather than maintain a
+// translated copy per format, we append a short LANGUAGE directive that fixes
+// the OUTPUT language while leaving the JSON KEYS (schema) in English. This is
+// the same technique the cross-check already relies on — its Japanese
+// contradiction case (test-crosscheck case (f)) confirms Japanese generation +
+// checking work through a single English prompt + a language instruction.
+
+export type Language = "en" | "ja";
+
+export function isLanguage(s: unknown): s is Language {
+  return s === "en" || s === "ja";
+}
+
+/** Coerce arbitrary input to a Language, defaulting to English (back-compat:
+ *  callers that never send `language` keep the original English behaviour). */
+export function toLanguage(s: unknown): Language {
+  return isLanguage(s) ? s : "en";
+}
+
+/**
+ * Directive appended to a generation system prompt. English is the historical
+ * default, so it adds nothing; Japanese fixes every JSON string VALUE to
+ * natural Japanese while keeping the schema KEYS and input-sourced
+ * numbers/names verbatim.
+ */
+export function languageDirective(lang: Language): string {
+  if (lang !== "ja") return "";
+  return (
+    `\n\nLANGUAGE:\n` +
+    `Write ALL output text — every JSON string VALUE (subjects, greetings,\n` +
+    `bodies, bullets, hooks, titles, CTAs, etc.) — in natural, fluent\n` +
+    `Japanese (日本語), as a Japanese founder would write it.\n` +
+    `Keep the JSON KEYS exactly as specified in the schema (English,\n` +
+    `unchanged). Numbers, currency symbols, URLs, and proper/product names\n` +
+    `taken from the input stay written exactly as they appear in the input;\n` +
+    `do not translate or localize them.`
+  );
+}
+
+/**
+ * Directive appended to the cross-check system prompt. The verbatim
+ * claim_text guard means claims are copied straight from OUTPUT TEXT and so
+ * already match its language; only the human-facing `reason` needs steering.
+ */
+export function crossCheckLanguageDirective(lang: Language): string {
+  if (lang !== "ja") return "";
+  return (
+    `\n\nLANGUAGE:\n` +
+    `Write each flag's "reason" field in Japanese (日本語). The "claim_text"\n` +
+    `field MUST remain an exact verbatim substring of OUTPUT TEXT — copy it\n` +
+    `character-for-character, do NOT translate it.`
+  );
+}
+
 // ---- per-format validators (ported from apps/web/lib/format-types.ts) ------
 // Dependency-free replacements for the shipped per-format Zod schemas. The
 // static landing repo has no build step, so Cloudflare Pages bundles the

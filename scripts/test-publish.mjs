@@ -24,6 +24,12 @@ import {
   percentEncode,
   buildOAuth1Header,
 } from "../functions/api/_publish.ts";
+import {
+  isLanguage,
+  toLanguage,
+  languageDirective,
+  crossCheckLanguageDirective,
+} from "../functions/api/_lib.ts";
 
 // ---- tiny test runner --------------------------------------------------------
 
@@ -106,6 +112,43 @@ t("toPlainText is empty for contentless objects", () => {
   eq(toPlainText("hiring", { headline: "   " }), "");
 });
 
+// ---- bilingual labels (日英両対応) -------------------------------------------
+
+console.log("unit: bilingual labels");
+t("default language keeps English labels", () => {
+  eq(contentToLines("internal", { key_events: ["shipped beta"] }), [
+    { label: "Event", text: "shipped beta" },
+  ]);
+});
+
+t("Japanese language localizes the bullet labels", () => {
+  eq(contentToLines("internal", { key_events: ["ベータをリリース"] }, "ja"), [
+    { label: "出来事", text: "ベータをリリース" },
+  ]);
+  eq(contentToLines("hiring", { recent_milestones: ["x"] }, "ja"), [
+    { label: "マイルストーン", text: "x" },
+  ]);
+  eq(contentToLines("customer", { next_steps: "v2を出す" }, "ja"), [
+    { label: "次のステップ", text: "v2を出す" },
+  ]);
+});
+
+t("toPlainText and toXThread thread the language through", () => {
+  eq(toPlainText("internal", { key_events: ["ベータ"] }, "ja"), "出来事: ベータ");
+  const tweets = toXThread("customer", { highlights: ["a"], improvements: ["b"] }, "ja");
+  eq(tweets.length, 1);
+  assert(tweets[0].includes("ハイライト: a"), tweets[0]);
+  assert(tweets[0].includes("改善: b"), tweets[0]);
+});
+
+t("model-authored headings (investor sections) are used verbatim regardless of language", () => {
+  // The section heading comes from the model in the output language already,
+  // so it must NOT be looked up in the English label table.
+  eq(contentToLines("investor", { sections: [{ heading: "成長", body: "MRR増" }] }, "ja"), [
+    { label: "成長", text: "MRR増" },
+  ]);
+});
+
 // ---- chunkText ---------------------------------------------------------------
 
 console.log("unit: chunkText");
@@ -176,6 +219,33 @@ t("matches equal strings, rejects everything else", () => {
   assert(!timingSafeEqual("s3cr3t-token", "s3cr3t-tokeX"));
   assert(!timingSafeEqual("", "x"));
   assert(timingSafeEqual("", ""));
+});
+
+// ---- output language directives (日英両対応) ---------------------------------
+
+console.log("unit: language helpers");
+t("isLanguage / toLanguage guard and default to English", () => {
+  assert(isLanguage("en") && isLanguage("ja"));
+  assert(!isLanguage("fr") && !isLanguage("") && !isLanguage(null));
+  eq(toLanguage("ja"), "ja");
+  eq(toLanguage("en"), "en");
+  eq(toLanguage("fr"), "en"); // unknown → English (back-compat)
+  eq(toLanguage(undefined), "en");
+});
+
+t("English directive is empty (no prompt change for the default path)", () => {
+  eq(languageDirective("en"), "");
+  eq(crossCheckLanguageDirective("en"), "");
+});
+
+t("Japanese directive instructs Japanese output but keeps schema keys/claims", () => {
+  const d = languageDirective("ja");
+  assert(d.includes("Japanese"), "mentions Japanese");
+  assert(d.includes("日本語"), "mentions 日本語");
+  assert(/keys/i.test(d), "tells the model to keep JSON keys");
+  const cc = crossCheckLanguageDirective("ja");
+  assert(cc.includes("日本語"), "cross-check reason in Japanese");
+  assert(/verbatim/i.test(cc), "claim_text must stay verbatim");
 });
 
 // ---- percentEncode -----------------------------------------------------------

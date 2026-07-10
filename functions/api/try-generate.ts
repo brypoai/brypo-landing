@@ -38,15 +38,18 @@ import {
   MODEL,
   buildCrossCheckUserMessage,
   computeCostUsd,
+  crossCheckLanguageDirective,
   dailyUsageKey,
   flattenContentStrings,
   hourlyRateKey,
   isFormatType,
+  languageDirective,
   parseJsonObject,
   sanitizeFlags,
   stripFences,
+  toLanguage,
 } from "./_lib";
-import type { CrossCheckFlag, FormatType } from "./_lib";
+import type { CrossCheckFlag, FormatType, Language } from "./_lib";
 import { CROSS_CHECK_SYSTEM_PROMPT, SYSTEM_PROMPTS } from "./_prompts";
 
 // Minimal structural types so the file bundles without
@@ -298,6 +301,9 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     );
   }
   const wantCrossCheck = body?.cross_check !== false;
+  // Output language (日英両対応). Defaults to English so existing callers
+  // that never send `language` keep their original behaviour.
+  const lang: Language = toLanguage(body?.language);
 
   // 3. Daily budget gate (UTC day). KV failures fail OPEN: availability
   // of the free tool wins, and the Anthropic key's own $50/mo spend
@@ -359,7 +365,7 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
   let outputTokens = 0;
   const gen = await callAnthropic(
     env.ANTHROPIC_API_KEY_TRY,
-    SYSTEM_PROMPTS[formatType],
+    SYSTEM_PROMPTS[formatType] + languageDirective(lang),
     sourceText,
     GENERATION_MAX_TOKENS,
     60_000,
@@ -416,7 +422,7 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
       );
       const check = await callAnthropic(
         env.ANTHROPIC_API_KEY_TRY,
-        CROSS_CHECK_SYSTEM_PROMPT,
+        CROSS_CHECK_SYSTEM_PROMPT + crossCheckLanguageDirective(lang),
         checkUserMessage,
         CROSS_CHECK_MAX_TOKENS,
         30_000,

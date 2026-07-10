@@ -460,3 +460,8 @@ export function hourlyRateKey(ipHash16: string, now: Date): string {
   const hh = now.toISOString().slice(0, 13).replace(/[-T]/g, "");
   return `ip:${ipHash16}:${hh}`;
 }
+
+/** publish:YYYY-MM-DD — daily publish counter (UTC day), bounds a leaked token. */
+export function publishUsageKey(now: Date): string {
+  return `publish:${now.toISOString().slice(0, 10)}`;
+}

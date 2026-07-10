@@ -926,6 +926,7 @@ footer .copyright { text-transform: uppercase; }
       publishingTo: function (chs) { return 'Publishing to ' + chs + '…'; },
       rejectedToken: 'Rejected: invalid publish token.',
       publishDisabled: 'Publishing is disabled on the server.',
+      publishRateLimited: 'Daily publish limit reached — resets daily (UTC).',
       publishFailed: 'Publish failed.',
       publishNetErr: 'Network error while publishing.',
       chNameX: 'X',
@@ -1006,6 +1007,7 @@ footer .copyright { text-transform: uppercase; }
       publishingTo: function (chs) { return chs + ' に投稿中…'; },
       rejectedToken: '拒否されました: 投稿トークンが無効です。',
       publishDisabled: 'サーバー側で投稿が無効になっています。',
+      publishRateLimited: '本日の投稿上限に達しました — 毎日リセットされます（UTC）。',
       publishFailed: '投稿に失敗しました。',
       publishNetErr: '投稿中に通信エラーが発生しました。',
       chNameX: 'X',
@@ -1664,6 +1666,10 @@ footer .copyright { text-transform: uppercase; }
         }
         if (res.status === 503) {
           setStatus(statusEl, t('publishDisabled'), 'err');
+          return;
+        }
+        if (res.status === 429) {
+          setStatus(statusEl, t('publishRateLimited'), 'err');
           return;
         }
         if (!data || !Array.isArray(data.results)) {

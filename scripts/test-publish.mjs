@@ -31,6 +31,7 @@ import {
   toLanguage,
   languageDirective,
   crossCheckLanguageDirective,
+  publishUsageKey,
 } from "../functions/api/_lib.ts";
 
 // ---- tiny test runner --------------------------------------------------------
@@ -309,6 +310,16 @@ t("Japanese directive instructs Japanese output but keeps schema keys/claims", (
   const cc = crossCheckLanguageDirective("ja");
   assert(cc.includes("日本語"), "cross-check reason in Japanese");
   assert(/verbatim/i.test(cc), "claim_text must stay verbatim");
+});
+
+// ---- publish rate-limit key --------------------------------------------------
+
+console.log("unit: publishUsageKey");
+t("publishUsageKey is a UTC-stable daily key", () => {
+  eq(publishUsageKey(new Date("2026-07-10T00:00:00Z")), "publish:2026-07-10");
+  eq(publishUsageKey(new Date("2026-07-10T23:59:59Z")), "publish:2026-07-10");
+  // 09:00 JST next day is still the same UTC day.
+  eq(publishUsageKey(new Date("2026-07-10T14:30:00Z")), "publish:2026-07-10");
 });
 
 // ---- percentEncode -----------------------------------------------------------

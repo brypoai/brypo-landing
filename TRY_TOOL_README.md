@@ -153,6 +153,11 @@ touching this repo.
 | `X_ACCESS_TOKEN`         | Secret    | user access token for the posting account |
 | `X_ACCESS_TOKEN_SECRET`  | Secret    | user access token secret |
 | `PUBLISH_WEBHOOK_URL`    | Secret    | Zapier / Make / n8n inbound hook (optional) |
+| `PUBLISH_DAILY_LIMIT`    | Plain var | max publishes per UTC day (default `50`); `TRY_KV` must be bound for it to apply |
+
+> The rate gate reuses the `TRY_KV` binding (counter key `publish:YYYY-MM-DD`).
+> If `TRY_KV` isn't bound to this Function, the gate is skipped (the token
+> stays the only gate). Bind the same namespace `/try` already uses.
 
 ### Owner checklist (before first publish)
 
@@ -175,6 +180,9 @@ touching this repo.
 - **Stop all publishing now**: set `PUBLISH_ENABLED="false"` → 503.
 - **Rotate the owner token**: change `PUBLISH_TOKEN`; the old value 401s
   immediately on the next request.
+- **Adjust the daily cap**: change `PUBLISH_DAILY_LIMIT` (env-only, no
+  redeploy needed). A day's count lives in `TRY_KV` under
+  `publish:YYYY-MM-DD`; delete that key to reset a day early.
 - **Partial thread**: if X accepts tweet 1 but rejects tweet 3, the
   response reports `posted N/total` and the first tweet's URL so you can
   reconcile by hand — the endpoint does not auto-delete a partial thread.
@@ -233,9 +241,12 @@ touching this repo.
 - **Schema fallback**: if the model returns non-JSON, the card degrades to
   raw text (`schema_fallback: true`) instead of erroring; cross-check is
   skipped for that run.
-- **Publish: no cost/rate gate**: `/api/publish` is owner-token-gated, so it
-  reuses no KV budget/rate limiting. It's protected by *who can call it*, not
-  *how often* — don't share the token.
+- **Publish: rate gate is a daily count, fail-open**: `/api/publish` caps
+  publishes at `PUBLISH_DAILY_LIMIT`/UTC-day via `TRY_KV` (429 `code=rate_limit`)
+  to bound a leaked token. Like the /try gates it's read-modify-write (a
+  concurrent burst can under-count) and **fails open** if KV is down or unbound
+  — the token and X's own API limits remain the hard backstops. It's a
+  runaway/leak backstop, not a fairness quota; still, don't share the token.
 - **Publish: raw-fallback cards can't post**: a card that degraded to raw
   text has no structured `content`, so no Publish button appears for it.
 - **Publish: partial threads aren't rolled back**: an X thread that fails

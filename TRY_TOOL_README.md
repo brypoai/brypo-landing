@@ -241,9 +241,12 @@ touching this repo.
 - **Publish: partial threads aren't rolled back**: an X thread that fails
   midway leaves the already-posted tweets live (the response reports how far
   it got); reconcile by hand.
-- **Publish: tweet length is approximate**: chunking uses a conservative
-  plain-character budget (`TWEET_LIMIT`), not X's exact weighted counting, so
-  CJK-heavy or emoji/URL-heavy posts leave extra headroom rather than risk a
-  reject. Threads over `MAX_TWEETS` are truncated with a marker.
+- **Publish: tweet length is X-weighted**: chunking measures X's *weighted*
+  length (`weightedLength` in `_publish.ts`) — CJK/kana/Hangul/fullwidth and
+  emoji count as 2, a URL as 23 — so Japanese and emoji/URL-heavy threads stay
+  within the 280 cap (a plain-character budget would have over-run it and been
+  rejected). The weight table is a close approximation of X's `twitter-text`
+  config, biased toward over-counting (never under). Threads over `MAX_TWEETS`
+  are truncated with a marker.
 - **Publish: no video pipeline**: TikTok/YouTube can only be reached via the
   webhook + your own video-generation step; the text tool cannot post video.

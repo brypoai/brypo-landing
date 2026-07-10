@@ -901,6 +901,8 @@ footer .copyright { text-transform: uppercase; }
       hintPasteFirst: 'Paste your week first',
       hintPickFormat: 'Pick at least one format',
       hintFormatsSelected: function (n) { return n + ' format' + (n !== 1 ? 's' : '') + ' selected'; },
+      langSwitchedJa: 'Detected Japanese notes — generating in Japanese.',
+      langSwitchedEn: 'Detected English notes — generating in English.',
       genProgress: function (n) { return 'Generating ' + n + ' write-up' + (n !== 1 ? 's' : '') + '…'; },
       annReady: function (label) { return label + ' ready'; },
       annUnavailable: ', cross-check unavailable.',
@@ -983,6 +985,8 @@ footer .copyright { text-transform: uppercase; }
       hintPasteFirst: 'まず1週間分を貼ってください',
       hintPickFormat: '少なくとも1つのフォーマットを選んでください',
       hintFormatsSelected: function (n) { return n + '個のフォーマットを選択中'; },
+      langSwitchedJa: '日本語のメモを検出しました — 日本語で生成します。',
+      langSwitchedEn: '英語のメモを検出しました — 英語で生成します。',
       genProgress: function (n) { return n + '件の文章を生成中…'; },
       annReady: function (label) { return label + 'を生成しました'; },
       annUnavailable: '（クロスチェックは利用できません）',
@@ -1057,12 +1061,29 @@ footer .copyright { text-transform: uppercase; }
     return v;
   }
 
-  function detectLang() {
+  function savedLang() {
     try {
-      var saved = localStorage.getItem('brypo_lang');
-      if (saved === 'ja' || saved === 'en') return saved;
+      var s = localStorage.getItem('brypo_lang');
+      if (s === 'ja' || s === 'en') return s;
     } catch (e) { /* storage blocked */ }
-    return (navigator.language || '').toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en';
+    return null;
+  }
+
+  // Resolved startup language: a saved preference wins, else the browser's.
+  function detectLang() {
+    return savedLang() || ((navigator.language || '').toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en');
+  }
+
+  // Language of the pasted notes: 'ja' when enough CJK (kana/kanji) is present,
+  // 'en' when enough Latin letters are, else null (not enough signal to switch).
+  // Kana/kanji is a strong Japanese signal even when notes mix in English
+  // product names or numbers, so a low CJK count is enough to pick 'ja'.
+  function detectTextLang(text) {
+    var cjk = (text.match(/[぀-ヿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ]/g) || []).length;
+    var latin = (text.match(/[A-Za-z]/g) || []).length;
+    if (cjk >= 4) return 'ja';
+    if (latin >= 8) return 'en';
+    return null;
   }
 
   var FORMATS = [
@@ -1128,11 +1149,15 @@ footer .copyright { text-transform: uppercase; }
     rendered: 0,
     // UI + generation output language ('en' | 'ja'); resolved at init.
     lang: 'en',
+    // True once the user picks a language explicitly (toggle) or a saved
+    // preference is restored — auto-detect only acts while this is false.
+    langLocked: false,
     // Publishable content stashed per card so the owner "Publish" button can
     // re-send the exact generated object to /api/publish.
     cardData: {}
   };
   state.lang = detectLang();
+  state.langLocked = savedLang() !== null;
   refreshFormatLabels();
 
   function announce(msg) {
@@ -1543,6 +1568,15 @@ footer .copyright { text-transform: uppercase; }
       els.hint.textContent = t('hintPickFormat');
       return;
     }
+    // Auto-detect the notes' language and match the output to it — unless the
+    // user has explicitly chosen a language (their choice always wins).
+    if (!state.langLocked) {
+      var detected = detectTextLang(text);
+      if (detected && detected !== state.lang) {
+        setLang(detected, false); // switch UI + output, but stay unlocked
+        announce(t(detected === 'ja' ? 'langSwitchedJa' : 'langSwitchedEn'));
+      }
+    }
     els.hint.textContent = t('hintFormatsSelected', selected.length);
     state.lastSourceText = text;
     state.rendered = 0;
@@ -1740,9 +1774,9 @@ footer .copyright { text-transform: uppercase; }
 
   var langBtns = Array.prototype.slice.call(document.querySelectorAll('.lang-btn'));
 
-  function setLang(lang) {
-    state.lang = lang === 'ja' ? 'ja' : 'en';
-    try { localStorage.setItem('brypo_lang', state.lang); } catch (e) { /* storage blocked */ }
+  // Render the whole UI in state.lang (chrome only — already-generated cards
+  // keep the language they were made in).
+  function applyLang() {
     document.documentElement.lang = state.lang;
     langBtns.forEach(function (b) {
       b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === state.lang));
@@ -1756,12 +1790,27 @@ footer .copyright { text-transform: uppercase; }
     updateHint();
   }
 
+  // explicit=true means the user chose this language (button / restored
+  // preference): persist it and lock out auto-detect. explicit=false is an
+  // auto-detected switch — applied, but not persisted and not locking, so the
+  // next paste can re-detect. Defaults to explicit.
+  function setLang(lang, explicit) {
+    if (explicit === undefined) explicit = true;
+    state.lang = lang === 'ja' ? 'ja' : 'en';
+    if (explicit) {
+      state.langLocked = true;
+      try { localStorage.setItem('brypo_lang', state.lang); } catch (e) { /* storage blocked */ }
+    }
+    applyLang();
+  }
+
   langBtns.forEach(function (b) {
-    b.addEventListener('click', function () { setLang(b.getAttribute('data-lang')); });
+    b.addEventListener('click', function () { setLang(b.getAttribute('data-lang'), true); });
   });
 
-  // Initial paint in the resolved language (detected/persisted at startup).
-  setLang(state.lang);
+  // Initial paint in the resolved language (detected/persisted at startup) —
+  // render only, without changing the lock decided at init.
+  applyLang();
 
   // Esc dismisses flag tooltips (WCAG 1.4.13): blur a focused mark,
   // suppress hover tooltips until the pointer moves again.

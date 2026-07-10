@@ -37,6 +37,13 @@ header switches **both** the UI chrome and the generation output language;
 the choice is persisted in `localStorage` and defaults to the browser
 language (`navigator.language`).
 
+- **Auto-detect**: until the user picks a language explicitly (clicks the
+  toggle, or has a saved preference), the tool detects the pasted notes'
+  language on Generate (`detectTextLang`: CJK kana/kanji → `ja`, Latin →
+  `en`) and switches to match, so Japanese notes produce Japanese output even
+  with an English browser. An explicit toggle **locks** the choice
+  (`state.langLocked`) and auto-detect no longer overrides it.
+
 - **UI**: `try/index.html` carries an `I18N` dictionary (`en` / `ja`) and a
   `t(key)` helper. Static elements are tagged `data-i18n` /
   `data-i18n-html` / `data-i18n-placeholder`; dynamic strings and card

@@ -26,5 +26,9 @@ X_ACCESS_TOKEN_SECRET=
 
 # Generic outbound webhook for platforms without a usable write API (note,
 # LinkedIn) or that need a video pipeline (TikTok, YouTube). Point it at a
-# Zapier / Make / n8n hook; it receives { format_type, text, content }.
+# Zapier / Make / n8n hook; it receives { format_type, language, text, content }.
 PUBLISH_WEBHOOK_URL=
+
+# Max publishes per UTC day (counter shares the TRY_KV namespace). A backstop
+# that bounds the damage if PUBLISH_TOKEN leaks. Optional; defaults to 50.
+PUBLISH_DAILY_LIMIT=50

@@ -153,6 +153,11 @@ touching this repo.
 | `X_ACCESS_TOKEN`         | Secret    | user access token for the posting account |
 | `X_ACCESS_TOKEN_SECRET`  | Secret    | user access token secret |
 | `PUBLISH_WEBHOOK_URL`    | Secret    | Zapier / Make / n8n inbound hook (optional) |
+| `PUBLISH_DAILY_LIMIT`    | Plain var | max publishes per UTC day (default `50`); `TRY_KV` must be bound for it to apply |
+
+> The rate gate reuses the `TRY_KV` binding (counter key `publish:YYYY-MM-DD`).
+> If `TRY_KV` isn't bound to this Function, the gate is skipped (the token
+> stays the only gate). Bind the same namespace `/try` already uses.
 
 ### Owner checklist (before first publish)
 
@@ -175,6 +180,9 @@ touching this repo.
 - **Stop all publishing now**: set `PUBLISH_ENABLED="false"` → 503.
 - **Rotate the owner token**: change `PUBLISH_TOKEN`; the old value 401s
   immediately on the next request.
+- **Adjust the daily cap**: change `PUBLISH_DAILY_LIMIT` (env-only, no
+  redeploy needed). A day's count lives in `TRY_KV` under
+  `publish:YYYY-MM-DD`; delete that key to reset a day early.
 - **Partial thread**: if X accepts tweet 1 but rejects tweet 3, the
   response reports `posted N/total` and the first tweet's URL so you can
   reconcile by hand — the endpoint does not auto-delete a partial thread.
@@ -233,14 +241,26 @@ touching this repo.
 - **Schema fallback**: if the model returns non-JSON, the card degrades to
   raw text (`schema_fallback: true`) instead of erroring; cross-check is
   skipped for that run.
-- **Publish: no cost/rate gate**: `/api/publish` is owner-token-gated, so it
-  reuses no KV budget/rate limiting. It's protected by *who can call it*, not
-  *how often* — don't share the token.
+- **Publish: rate gate is a daily count, fail-open**: `/api/publish` caps
+  publishes at `PUBLISH_DAILY_LIMIT`/UTC-day via `TRY_KV` (429 `code=rate_limit`)
+  to bound a leaked token. Like the /try gates it's read-modify-write (a
+  concurrent burst can under-count) and **fails open** if KV is down or unbound
+  — the token and X's own API limits remain the hard backstops. It's a
+  runaway/leak backstop, not a fairness quota; still, don't share the token.
 - **Publish: raw-fallback cards can't post**: a card that degraded to raw
   text has no structured `content`, so no Publish button appears for it.
 - **Publish: partial threads aren't rolled back**: an X thread that fails
   midway leaves the already-posted tweets live (the response reports how far
   it got); reconcile by hand.
+- **Publish: idempotency is best-effort**: an identical publish (same
+  format + language + channels + content) within `IDEM_TTL_S` (10 min) is
+  deduped via a content-hash key in `TRY_KV` → `409 code=duplicate`, which
+  stops a double-click or a lost-response retry from posting twice. The key is
+  kept only on full success (a failed attempt releases it so you can retry).
+  KV has no atomic compare-and-set, so two *simultaneous* identical requests
+  can still both slip through — the client disables the button while a request
+  is in flight, which covers that common case. To deliberately re-post the
+  exact same text, wait out the window or change a character.
 - **Publish: tweet length is X-weighted**: chunking measures X's *weighted*
   length (`weightedLength` in `_publish.ts`) — CJK/kana/Hangul/fullwidth and
   emoji count as 2, a URL as 23 — so Japanese and emoji/URL-heavy threads stay

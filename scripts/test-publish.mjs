@@ -22,6 +22,7 @@ import {
   toXThread,
   chunkText,
   weightedLength,
+  idempotencyPayload,
   timingSafeEqual,
   percentEncode,
   buildOAuth1Header,
@@ -31,6 +32,7 @@ import {
   toLanguage,
   languageDirective,
   crossCheckLanguageDirective,
+  publishUsageKey,
 } from "../functions/api/_lib.ts";
 
 // ---- tiny test runner --------------------------------------------------------
@@ -309,6 +311,44 @@ t("Japanese directive instructs Japanese output but keeps schema keys/claims", (
   const cc = crossCheckLanguageDirective("ja");
   assert(cc.includes("日本語"), "cross-check reason in Japanese");
   assert(/verbatim/i.test(cc), "claim_text must stay verbatim");
+});
+
+// ---- idempotency payload -----------------------------------------------------
+
+console.log("unit: idempotencyPayload");
+t("same action → same payload regardless of channel / key order", () => {
+  const a = idempotencyPayload("sns", "en", ["x", "webhook"], { b: 1, a: 2 });
+  const b = idempotencyPayload("sns", "en", ["webhook", "x"], { a: 2, b: 1 });
+  eq(a, b);
+});
+t("duplicate channels don't change the payload", () => {
+  eq(
+    idempotencyPayload("sns", "en", ["x", "x"], { a: 1 }),
+    idempotencyPayload("sns", "en", ["x"], { a: 1 }),
+  );
+});
+t("different content / format / language / channels → different payload", () => {
+  const base = idempotencyPayload("sns", "en", ["x"], { a: 1 });
+  assert(base !== idempotencyPayload("sns", "en", ["x"], { a: 2 }), "content");
+  assert(base !== idempotencyPayload("investor", "en", ["x"], { a: 1 }), "format");
+  assert(base !== idempotencyPayload("sns", "ja", ["x"], { a: 1 }), "language");
+  assert(base !== idempotencyPayload("sns", "en", ["webhook"], { a: 1 }), "channels");
+});
+t("nested content compares structurally, not by key order", () => {
+  eq(
+    idempotencyPayload("internal", "en", ["x"], { s: { x: 1, y: [2, 3] } }),
+    idempotencyPayload("internal", "en", ["x"], { s: { y: [2, 3], x: 1 } }),
+  );
+});
+
+// ---- publish rate-limit key --------------------------------------------------
+
+console.log("unit: publishUsageKey");
+t("publishUsageKey is a UTC-stable daily key", () => {
+  eq(publishUsageKey(new Date("2026-07-10T00:00:00Z")), "publish:2026-07-10");
+  eq(publishUsageKey(new Date("2026-07-10T23:59:59Z")), "publish:2026-07-10");
+  // 09:00 JST next day is still the same UTC day.
+  eq(publishUsageKey(new Date("2026-07-10T14:30:00Z")), "publish:2026-07-10");
 });
 
 // ---- percentEncode -----------------------------------------------------------

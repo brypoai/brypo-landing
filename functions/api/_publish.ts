@@ -34,6 +34,42 @@ export function isChannel(s: unknown): s is Channel {
   return s === "x" || s === "webhook";
 }
 
+// ---- idempotency ------------------------------------------------------------
+
+// Deterministic JSON: object keys sorted recursively so two structurally-equal
+// contents serialize identically (JSON.stringify preserves insertion order).
+function stableStringify(v: unknown): string {
+  if (v === null || typeof v !== "object") return JSON.stringify(v) ?? "null";
+  if (Array.isArray(v)) return "[" + v.map(stableStringify).join(",") + "]";
+  const o = v as Record<string, unknown>;
+  return (
+    "{" +
+    Object.keys(o)
+      .sort()
+      .map((k) => JSON.stringify(k) + ":" + stableStringify(o[k]))
+      .join(",") +
+    "}"
+  );
+}
+
+/**
+ * Canonical string identifying a publish action — hashed into the idempotency
+ * key. Independent of channel order and of content object key order, so two
+ * clicks on the same card produce the same key (and are deduped) while a
+ * genuinely different post produces a different one. A NUL byte joins the
+ * fields — JSON.stringify escapes any NUL inside content, so the separator can
+ * never appear within a field and distinct fields can't collide.
+ */
+export function idempotencyPayload(
+  formatType: FormatType,
+  language: Language,
+  channels: Channel[],
+  content: Record<string, unknown>,
+): string {
+  const chans = Array.from(new Set(channels)).sort().join(",");
+  return [formatType, language, chans, stableStringify(content)].join("\u0000");
+}
+
 // ---- content → line extraction ----------------------------------------------
 
 interface Line {

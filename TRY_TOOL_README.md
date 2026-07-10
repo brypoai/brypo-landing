@@ -30,6 +30,29 @@ brypo.com (Cloudflare Pages, this repo, static + functions)
   of OCR).
 - The Next.js app (Vercel) and Supabase are untouched. No DB anywhere.
 
+### Language (日英両対応)
+
+The tool is bilingual (English / 日本語). A language toggle in the page
+header switches **both** the UI chrome and the generation output language;
+the choice is persisted in `localStorage` and defaults to the browser
+language (`navigator.language`).
+
+- **UI**: `try/index.html` carries an `I18N` dictionary (`en` / `ja`) and a
+  `t(key)` helper. Static elements are tagged `data-i18n` /
+  `data-i18n-html` / `data-i18n-placeholder`; dynamic strings and card
+  chrome (section headings, cross-check strip, statuses) go through `t()`.
+- **Generation**: the page sends `language: "en" | "ja"` on
+  `/api/try-generate`. Rather than a translated prompt per format, the
+  server appends a short `LANGUAGE` directive (`languageDirective` in
+  `_lib.ts`) that fixes every JSON string *value* to the chosen language
+  while keeping the schema *keys* in English. The cross-check gets the
+  matching `crossCheckLanguageDirective` (its verbatim `claim_text` guard
+  already carries the output language). `language` defaults to `"en"` when
+  absent, so pre-existing callers are unaffected.
+- **Publishing**: `/api/publish` takes the same `language`; the structured
+  bullet labels (`Milestone` → `マイルストーン`, etc.) are localized in
+  `_publish.ts` while model-authored text stays as generated.
+
 ### Privacy
 
 Pasted text is processed and discarded: never stored, never logged. The
@@ -69,6 +92,92 @@ Set all four for **both Production and Preview**.
    `npm run test:crosscheck` (needs the key in `.dev.vars` or env). All
    three cases must pass; if (c) over-flags, tighten the "Do NOT flag"
    list in `functions/api/_prompts.ts`.
+
+## Auto-publish (`/api/publish`)
+
+Turns a generated card into a live post. Wired to the `/try` page as an
+owner-only **Publish** button per card (open the "Auto-publish (owner)"
+panel, paste the token, pick channels).
+
+```
+try/index.html            "Auto-publish (owner)" panel + per-card Publish button
+functions/api/publish.ts  POST /api/publish (owner-gated dispatch)
+functions/api/_publish.ts pure formatters (content→X thread / plaintext) + OAuth1
+scripts/test-publish.mjs  unit tests for the formatters + signer
+```
+
+### Why it's owner-gated (read this)
+
+`/try` is **public and login-free**. If publishing were open, any visitor
+could post as your account. So `/api/publish`:
+
+- is **off** unless `PUBLISH_ENABLED="true"`, and
+- rejects (401) every request whose `X-Publish-Token` header (or `token`
+  body field) doesn't match `PUBLISH_TOKEN` (constant-time compare).
+
+The token lives only in the owner's browser memory (never persisted, sent
+as a header so it never lands in a body log). Posting is still
+**immediate, no review step** — the gate is about *who*, not *whether to
+confirm*.
+
+### Channels
+
+| Channel   | What it does | Reaches |
+|-----------|--------------|---------|
+| `x`       | Native X API v2, OAuth 1.0a. Content is flowed into a **numbered thread**; each tweet replies to the previous. | X (Twitter) |
+| `webhook` | POSTs `{ format_type, language, text, content }` to `PUBLISH_WEBHOOK_URL`. | **note, LinkedIn, TikTok, YouTube, blog, …** via a Zapier / Make / n8n scenario you own |
+
+**Honest reality on the other platforms you asked about:**
+
+- **note** has no public write API. **LinkedIn** posting needs an OAuth
+  app review. → reach both through the **webhook** → an automation
+  platform that has those connectors.
+- **TikTok / YouTube are video platforms.** `/try` produces *text*, and
+  both APIs require an uploaded video file plus app approval — there is no
+  "auto-post this paragraph as a TikTok" path. The webhook still delivers
+  the generated copy (caption/description/script), but a **video step** in
+  your automation is required before it can post. Not something this
+  text tool can do end-to-end.
+
+The webhook channel is the extension point: add any platform there without
+touching this repo.
+
+### Env / bindings (add to the existing four)
+
+| Name                     | Kind      | Notes |
+|--------------------------|-----------|-------|
+| `PUBLISH_ENABLED`        | Plain var | `"true"` to arm; anything else = 503 `code=disabled` |
+| `PUBLISH_TOKEN`          | Secret    | long random string; the owner pastes this in the panel |
+| `X_API_KEY`              | Secret    | X app consumer key |
+| `X_API_SECRET`           | Secret    | X app consumer secret |
+| `X_ACCESS_TOKEN`         | Secret    | user access token for the posting account |
+| `X_ACCESS_TOKEN_SECRET`  | Secret    | user access token secret |
+| `PUBLISH_WEBHOOK_URL`    | Secret    | Zapier / Make / n8n inbound hook (optional) |
+
+### Owner checklist (before first publish)
+
+1. **X developer portal** → create an app for the posting account
+   (e.g. @brypoai) with **Read and Write** permission → generate the
+   **consumer key/secret** and a **user access token/secret** → paste the
+   four `X_*` values into Pages secrets.
+2. Set a long random `PUBLISH_TOKEN` (e.g. `openssl rand -hex 32`) and
+   `PUBLISH_ENABLED="true"` (both Production + Preview).
+3. (Optional) Create a Zapier/Make/n8n inbound webhook and set
+   `PUBLISH_WEBHOOK_URL`; map its `text`/`content` fields to note /
+   LinkedIn / a video step / etc.
+4. Local dev: fill the same keys in `.dev.vars`, `npm run dev`, open
+   `/try`, generate, open the owner panel, paste the token, Publish.
+5. Run `npm run test:publish` — the formatter/threading/OAuth unit tests
+   must pass.
+
+### Publish runbook
+
+- **Stop all publishing now**: set `PUBLISH_ENABLED="false"` → 503.
+- **Rotate the owner token**: change `PUBLISH_TOKEN`; the old value 401s
+  immediately on the next request.
+- **Partial thread**: if X accepts tweet 1 but rejects tweet 3, the
+  response reports `posted N/total` and the first tweet's URL so you can
+  reconcile by hand — the endpoint does not auto-delete a partial thread.
 
 ## Runbook
 
@@ -124,3 +233,17 @@ Set all four for **both Production and Preview**.
 - **Schema fallback**: if the model returns non-JSON, the card degrades to
   raw text (`schema_fallback: true`) instead of erroring; cross-check is
   skipped for that run.
+- **Publish: no cost/rate gate**: `/api/publish` is owner-token-gated, so it
+  reuses no KV budget/rate limiting. It's protected by *who can call it*, not
+  *how often* — don't share the token.
+- **Publish: raw-fallback cards can't post**: a card that degraded to raw
+  text has no structured `content`, so no Publish button appears for it.
+- **Publish: partial threads aren't rolled back**: an X thread that fails
+  midway leaves the already-posted tweets live (the response reports how far
+  it got); reconcile by hand.
+- **Publish: tweet length is approximate**: chunking uses a conservative
+  plain-character budget (`TWEET_LIMIT`), not X's exact weighted counting, so
+  CJK-heavy or emoji/URL-heavy posts leave extra headroom rather than risk a
+  reject. Threads over `MAX_TWEETS` are truncated with a marker.
+- **Publish: no video pipeline**: TikTok/YouTube can only be reached via the
+  webhook + your own video-generation step; the text tool cannot post video.

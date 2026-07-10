@@ -152,6 +152,22 @@ main {
   padding: 0.3em 0.9em;
 }
 
+.header-right { display: flex; align-items: center; gap: 0.7rem; }
+.lang-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; }
+.lang-btn {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  padding: 0.3em 0.7em;
+  background: transparent;
+  color: var(--muted-hi);
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lang-btn[aria-pressed="true"] { background: var(--accent); color: var(--bg); }
+.lang-btn:hover[aria-pressed="false"] { color: var(--accent); }
+
 /* Visually hidden, still announced */
 .sr-only {
   position: absolute;
@@ -586,6 +602,63 @@ body.tips-dismissed mark.flagged:hover::after { display: none; }
 }
 .retry-btn:hover { background: var(--accent); color: var(--bg); }
 
+/* ===== Auto-publish (owner) ===== */
+.publish-panel {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  max-width: 640px;
+  margin: 0 0 clamp(1.5rem, 3vw, 2rem);
+  background: var(--bg-soft);
+}
+.publish-panel > summary {
+  cursor: pointer;
+  padding: 0.7rem 1rem;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-soft);
+}
+.publish-panel > summary::marker { color: var(--accent); }
+.publish-body { padding: 0 1rem 1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+.publish-note { font-size: 12.5px; color: var(--muted-hi); max-width: 52ch; }
+.publish-field { display: flex; flex-direction: column; gap: 0.3rem; font-size: 12px; color: var(--fg-soft); }
+.publish-field input {
+  padding: 0.55rem 0.7rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+.publish-channels { border: 1px solid var(--line); border-radius: 4px; padding: 0.6rem 0.8rem; display: flex; flex-direction: column; gap: 0.45rem; }
+.publish-channels legend { font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted-hi); padding: 0 0.3rem; }
+.publish-channels label { font-size: 12.5px; color: var(--fg-soft); display: flex; align-items: flex-start; gap: 0.5rem; cursor: pointer; }
+.publish-hint { font-size: 12px; color: var(--muted-hi); min-height: 1em; }
+.publish-hint.ok { color: var(--accent); }
+.publish-hint.err { color: #d66; }
+.card-publish {
+  margin-top: 0.7rem;
+  padding: 0.5rem 1rem;
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.card-publish:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
+.card-publish:disabled { opacity: 0.55; cursor: default; }
+.results:not(.publish-on) .card-publish-wrap { display: none; }
+.card-publish-status { margin-top: 0.4rem; font-size: 12px; color: var(--fg-soft); }
+.card-publish-status.ok { color: var(--accent); }
+.card-publish-status.err { color: #d66; }
+
 /* ===== Conversion block ===== */
 .conversion {
   border: 1px solid var(--line);
@@ -692,24 +765,31 @@ footer .copyright { text-transform: uppercase; }
   <!-- Mini header -->
   <header class="try-top reveal">
     <a class="try-brand" href="/">Brypo<span class="stroke">.</span></a>
-    <span class="badge">free tool &middot; no signup</span>
+    <span class="header-right">
+      <span class="badge" data-i18n="badge">free tool &middot; no signup</span>
+      <span class="lang-switch" role="group" aria-label="Language / 言語">
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" class="lang-btn" data-lang="ja" aria-pressed="false">日本語</button>
+      </span>
+    </span>
   </header>
 
   <!-- Hero -->
-  <h1 class="try-h1 reveal">Paste your week. Get five write-ups.</h1>
-  <p class="try-sub reveal">&hellip;and a fact-check that flags anything you can&rsquo;t back up.</p>
+  <h1 class="try-h1 reveal" data-i18n="h1">Paste your week. Get five write-ups.</h1>
+  <p class="try-sub reveal" data-i18n="sub">&hellip;and a fact-check that flags anything you can&rsquo;t back up.</p>
 
   <!-- Input -->
   <section class="input-block reveal" aria-label="Your week's notes">
-    <label class="input-label" for="source">Your week, as it actually happened</label>
+    <label class="input-label" for="source" data-i18n="inputLabel">Your week, as it actually happened</label>
     <textarea id="source" maxlength="12000" rows="10"
+      data-i18n-placeholder="sourcePlaceholder"
       placeholder="mon: shipped the new auth flow, took all day&#10;tue — 12 signups from the launch tweet. MRR $890&#10;wed: long call with first paying customer, wants CSV export&#10;&hellip;paste anything: Slack fragments, commit messages, numbers, half-sentences."></textarea>
     <div class="input-meta">
-      <span class="privacy-note">Processed and discarded. Your text is never stored.</span>
+      <span class="privacy-note" data-i18n="privacyNote">Processed and discarded. Your text is never stored.</span>
       <span id="char-count" aria-live="off">0 / 12,000</span>
     </div>
     <div class="example-row">
-      <button type="button" class="example-link" id="example-btn">Try an example &rarr;</button>
+      <button type="button" class="example-link" id="example-btn" data-i18n="exampleBtn">Try an example &rarr;</button>
     </div>
   </section>
 
@@ -731,14 +811,37 @@ footer .copyright { text-transform: uppercase; }
   <!-- Results -->
   <section class="results" id="results" tabindex="-1" aria-label="Generated write-ups"></section>
 
+  <!-- Owner-only auto-publish. Hidden from the public tool by default: it
+       only does anything once the owner pastes the publish token, which the
+       server checks against PUBLISH_TOKEN before touching any account. -->
+  <details class="publish-panel" id="publish-panel">
+    <summary data-i18n="publishSummary">Auto-publish (owner)</summary>
+    <div class="publish-body">
+      <p class="publish-note" data-i18n="publishNote">
+        Owner-only. Paste your publish token to turn on a &ldquo;Publish&rdquo;
+        button on each card. Posts go live immediately &mdash; no review step.
+      </p>
+      <label class="publish-field">
+        <span data-i18n="publishTokenLabel">Publish token</span>
+        <input type="password" id="publish-token" autocomplete="off" spellcheck="false" placeholder="PUBLISH_TOKEN">
+      </label>
+      <fieldset class="publish-channels">
+        <legend data-i18n="channels">Channels</legend>
+        <label><input type="checkbox" id="ch-x" checked> <span data-i18n="channelX">X (Twitter)</span></label>
+        <label><input type="checkbox" id="ch-webhook"> <span data-i18n="channelWebhook">Webhook (note / LinkedIn / TikTok / YouTube via Zapier&nbsp;/&nbsp;Make)</span></label>
+      </fieldset>
+      <p class="publish-hint" id="publish-hint"></p>
+    </div>
+  </details>
+
   <!-- Conversion block (revealed after first card resolves) -->
   <aside class="conversion" id="conversion" hidden>
-    <p>
+    <p data-i18n-html="conversionBody">
       <strong>This is the free slice.</strong> Full Brypo works from your real
       evidence &mdash; screenshots, Slack, recordings &mdash; and keeps every
       version honest.
     </p>
-    <p class="conversion-note">
+    <p class="conversion-note" data-i18n="conversionNote">
       The closed beta is invite-only and English-only for now &mdash; we
       invite from the waitlist.
     </p>
@@ -752,6 +855,7 @@ footer .copyright { text-transform: uppercase; }
       data-tally-emoji-text="&#10022;"
       data-tally-emoji-animation="none"
       aria-label="Join the Brypo waitlist"
+      data-i18n="waitlistCta"
     >
       Join the waitlist &rarr;
     </button>
@@ -761,7 +865,7 @@ footer .copyright { text-transform: uppercase; }
   <footer class="reveal">
     <span class="copyright">&copy; 2026 Brypo</span>
     <nav class="links">
-      <a href="/">Home</a>
+      <a href="/" data-i18n="navHome">Home</a>
       <a href="https://x.com/brypoai" target="_blank" rel="noopener">X</a>
       <a href="https://github.com/brypoai" target="_blank" rel="noopener">GitHub</a>
     </nav>
@@ -775,15 +879,200 @@ footer .copyright { text-transform: uppercase; }
 
   var MAX_CHARS = 12000;
 
-  var FORMATS = [
-    { key: 'investor', label: 'Investor update' },
-    { key: 'sns',      label: 'X thread' },
-    { key: 'hiring',   label: 'Hiring post' },
-    { key: 'customer', label: 'Customer case' },
-    { key: 'internal', label: 'Internal doc' }
-  ];
+  // ---- i18n (日英両対応) ---------------------------------------------------
+  // Values may be a string or a function (called with interpolation args).
+  // Every key exists in `en`; `ja` overrides. t() falls back to en on a miss.
+  var I18N = {
+    en: {
+      fmt_investor: 'Investor update',
+      fmt_sns: 'X thread',
+      fmt_hiring: 'Hiring post',
+      fmt_customer: 'Customer case',
+      fmt_internal: 'Internal doc',
+      badge: 'free tool · no signup',
+      h1: 'Paste your week. Get five write-ups.',
+      sub: '…and a fact-check that flags anything you can’t back up.',
+      inputLabel: 'Your week, as it actually happened',
+      sourcePlaceholder: 'mon: shipped the new auth flow, took all day\ntue — 12 signups from the launch tweet. MRR $890\nwed: long call with first paying customer, wants CSV export\n…paste anything: Slack fragments, commit messages, numbers, half-sentences.',
+      privacyNote: 'Processed and discarded. Your text is never stored.',
+      exampleBtn: 'Try an example →',
+      generate: 'Generate',
+      generating: 'Generating…',
+      hintPasteFirst: 'Paste your week first',
+      hintPickFormat: 'Pick at least one format',
+      hintFormatsSelected: function (n) { return n + ' format' + (n !== 1 ? 's' : '') + ' selected'; },
+      genProgress: function (n) { return 'Generating ' + n + ' write-up' + (n !== 1 ? 's' : '') + '…'; },
+      annReady: function (label) { return label + ' ready'; },
+      annUnavailable: ', cross-check unavailable.',
+      annClean: ', cross-check clean.',
+      annFlagged: function (n) { return ', ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged.'; },
+      annFailed: function (label) { return label + ' failed — a retry button is available on its card.'; },
+      annPublished: function (label) { return label + ' published.'; },
+      annPublishErr: function (label) { return label + ' publish had errors.'; },
+      ccUnavailable: 'cross-check unavailable for this run',
+      ccClean: '✓ Cross-check: clean',
+      ccFlagged: function (n) { return '⚠ ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged'; },
+      flagsSummary: function (n) { return 'Flags (' + n + ')'; },
+      rawNote: 'Couldn’t shape this one into its layout — raw output below.',
+      emptyDraft: 'Empty draft — try adding more detail to your notes.',
+      retry: 'Retry',
+      genericError: 'Something went wrong generating this one.',
+      networkError: 'Network hiccup — give it another go.',
+      publishBtn: 'Publish',
+      publishingBtn: 'Publishing…',
+      needToken: 'Paste your publish token first.',
+      needChannel: 'Pick at least one channel.',
+      nothingToPublish: 'Nothing to publish for this card.',
+      publishingTo: function (chs) { return 'Publishing to ' + chs + '…'; },
+      rejectedToken: 'Rejected: invalid publish token.',
+      publishDisabled: 'Publishing is disabled on the server.',
+      publishFailed: 'Publish failed.',
+      publishNetErr: 'Network error while publishing.',
+      chNameX: 'X',
+      chNameWebhook: 'Webhook',
+      secRecentMilestones: 'Recent milestones',
+      secOpenRoles: 'Open roles',
+      secApply: 'Apply →',
+      secHighlights: 'Highlights',
+      secImprovements: 'Improvements',
+      secKnownIssues: 'Known issues',
+      secNextSteps: 'Next steps',
+      secKeyEvents: 'Key events',
+      secDecisions: 'Decisions',
+      secOpenQuestions: 'Open questions',
+      secActionItems: 'Action items',
+      secSection: function (i) { return 'Section ' + i; },
+      threadAria: function (n) { return 'Thread of ' + n + ' posts'; },
+      publishSummary: 'Auto-publish (owner)',
+      publishNote: 'Owner-only. Paste your publish token to turn on a “Publish” button on each card. Posts go live immediately — no review step.',
+      publishTokenLabel: 'Publish token',
+      channels: 'Channels',
+      channelX: 'X (Twitter)',
+      channelWebhook: 'Webhook (note / LinkedIn / TikTok / YouTube via Zapier / Make)',
+      conversionBody: '<strong>This is the free slice.</strong> Full Brypo works from your real evidence — screenshots, Slack, recordings — and keeps every version honest.',
+      conversionNote: 'The closed beta is invite-only for now — we invite from the waitlist.',
+      waitlistCta: 'Join the waitlist →',
+      navHome: 'Home',
+      budgetTitle: 'Today’s budget is used up.',
+      budgetBody: 'The free tool hit today’s budget — it resets daily. Join the waitlist and we’ll ping you at launch.',
+      disabledTitle: 'The free tool is taking a breather.',
+      disabledBody: 'We’ve switched it off for the moment. Join the waitlist and we’ll ping you when it’s back — and at launch.',
+      rateTitle: 'Whoa — that’s a lot of generating.',
+      rateBody: 'You’ve hit the hourly limit. Give it a little while and try again.',
+      tooLongTitle: 'That’s more than a week’s worth.',
+      tooLongBody: 'The input cap is 12,000 characters — trim your notes down and try again.',
+      stoppedBeforeGen: 'Stopped before generating — see the notice above.'
+    },
+    ja: {
+      fmt_investor: '投資家向けアップデート',
+      fmt_sns: 'Xスレッド',
+      fmt_hiring: '採用向け投稿',
+      fmt_customer: '顧客向けアップデート',
+      fmt_internal: '社内ドキュメント',
+      badge: '無料ツール・登録不要',
+      h1: '1週間分を貼るだけ。5種類の文章に。',
+      sub: '…そして、裏付けの取れない箇所を指摘するファクトチェック付き。',
+      inputLabel: '実際に起きたままの、あなたの1週間',
+      sourcePlaceholder: '月: 新しい認証フローをリリース、丸一日かかった\n火 — ローンチのツイートから12名が登録。MRR $890\n水: 初の有料顧客と長電話、CSVエクスポートが欲しいとのこと\n…何でも貼ってOK: Slackの断片、コミットメッセージ、数字、書きかけの文。',
+      privacyNote: '処理後すぐに破棄されます。あなたのテキストは保存されません。',
+      exampleBtn: '例を試す →',
+      generate: '生成する',
+      generating: '生成中…',
+      hintPasteFirst: 'まず1週間分を貼ってください',
+      hintPickFormat: '少なくとも1つのフォーマットを選んでください',
+      hintFormatsSelected: function (n) { return n + '個のフォーマットを選択中'; },
+      genProgress: function (n) { return n + '件の文章を生成中…'; },
+      annReady: function (label) { return label + 'を生成しました'; },
+      annUnavailable: '（クロスチェックは利用できません）',
+      annClean: '（クロスチェックはクリーン）',
+      annFlagged: function (n) { return '（' + n + '件の主張にフラグ）'; },
+      annFailed: function (label) { return label + 'の生成に失敗しました。カード上の再試行ボタンを使えます。'; },
+      annPublished: function (label) { return label + 'を投稿しました。'; },
+      annPublishErr: function (label) { return label + 'の投稿でエラーがありました。'; },
+      ccUnavailable: 'この生成ではクロスチェックを利用できません',
+      ccClean: '✓ クロスチェック: クリーン',
+      ccFlagged: function (n) { return '⚠ ' + n + '件の主張にフラグ'; },
+      flagsSummary: function (n) { return 'フラグ (' + n + ')'; },
+      rawNote: 'このフォーマットに整形できませんでした — 以下は生の出力です。',
+      emptyDraft: '内容が空でした — メモをもう少し詳しく書いてみてください。',
+      retry: '再試行',
+      genericError: 'この生成で問題が発生しました。',
+      networkError: '通信エラーが発生しました — もう一度お試しください。',
+      publishBtn: '投稿する',
+      publishingBtn: '投稿中…',
+      needToken: 'まず投稿トークンを貼ってください。',
+      needChannel: '少なくとも1つのチャンネルを選んでください。',
+      nothingToPublish: 'このカードには投稿できる内容がありません。',
+      publishingTo: function (chs) { return chs + ' に投稿中…'; },
+      rejectedToken: '拒否されました: 投稿トークンが無効です。',
+      publishDisabled: 'サーバー側で投稿が無効になっています。',
+      publishFailed: '投稿に失敗しました。',
+      publishNetErr: '投稿中に通信エラーが発生しました。',
+      chNameX: 'X',
+      chNameWebhook: 'Webhook',
+      secRecentMilestones: '最近のマイルストーン',
+      secOpenRoles: '募集ポジション',
+      secApply: '応募する →',
+      secHighlights: 'ハイライト',
+      secImprovements: '改善点',
+      secKnownIssues: '既知の問題',
+      secNextSteps: '次のステップ',
+      secKeyEvents: '主な出来事',
+      secDecisions: '決定事項',
+      secOpenQuestions: 'オープンな論点',
+      secActionItems: 'アクション項目',
+      secSection: function (i) { return 'セクション' + i; },
+      threadAria: function (n) { return n + '件の投稿のスレッド'; },
+      publishSummary: '自動投稿（オーナー用）',
+      publishNote: 'オーナー専用。投稿トークンを貼ると各カードに「投稿する」ボタンが表示されます。投稿は即座に公開されます — レビュー工程はありません。',
+      publishTokenLabel: '投稿トークン',
+      channels: 'チャンネル',
+      channelX: 'X (Twitter)',
+      channelWebhook: 'Webhook（note / LinkedIn / TikTok / YouTube を Zapier / Make 経由で）',
+      conversionBody: '<strong>これは無料版の一部です。</strong> 製品版のBrypoは、スクリーンショット・Slack・録画といった実際の証拠から動き、すべてのバージョンを正直に保ちます。',
+      conversionNote: 'クローズドベータは現在、招待制です — ウェイトリストから順にご招待します。',
+      waitlistCta: 'ウェイトリストに登録 →',
+      navHome: 'ホーム',
+      budgetTitle: '本日の予算に達しました。',
+      budgetBody: '無料ツールが本日の予算に達しました — 毎日リセットされます。ウェイトリストに登録いただければ、ローンチ時にお知らせします。',
+      disabledTitle: '無料ツールは現在お休み中です。',
+      disabledBody: '一時的に停止しています。ウェイトリストに登録いただければ、再開時とローンチ時にお知らせします。',
+      rateTitle: '生成が多すぎます。',
+      rateBody: '1時間あたりの上限に達しました。少し時間をおいて再度お試しください。',
+      tooLongTitle: '1週間分を超えています。',
+      tooLongBody: '入力上限は12,000文字です — メモを短くして再度お試しください。',
+      stoppedBeforeGen: '生成前に停止しました — 上の通知をご覧ください。'
+    }
+  };
 
-  var EXAMPLE_TEXT = [
+  function t(key) {
+    var table = I18N[state.lang] || I18N.en;
+    var v = table[key];
+    if (v === undefined) v = I18N.en[key];
+    if (typeof v === 'function') return v.apply(null, Array.prototype.slice.call(arguments, 1));
+    return v;
+  }
+
+  function detectLang() {
+    try {
+      var saved = localStorage.getItem('brypo_lang');
+      if (saved === 'ja' || saved === 'en') return saved;
+    } catch (e) { /* storage blocked */ }
+    return (navigator.language || '').toLowerCase().indexOf('ja') === 0 ? 'ja' : 'en';
+  }
+
+  var FORMATS = [
+    { key: 'investor', labelKey: 'fmt_investor' },
+    { key: 'sns',      labelKey: 'fmt_sns' },
+    { key: 'hiring',   labelKey: 'fmt_hiring' },
+    { key: 'customer', labelKey: 'fmt_customer' },
+    { key: 'internal', labelKey: 'fmt_internal' }
+  ];
+  function refreshFormatLabels() {
+    FORMATS.forEach(function (f) { f.label = t(f.labelKey); });
+  }
+
+  var EXAMPLE_TEXT_EN = [
     'mon — shipped the new onboarding checklist. took 3 days not 1, classic.',
     'tue: MRR $4,280 (up from $3,850 last wk). 33 paying users. churn 1 (the agency guy, expected)',
     'wed — call w/ Dana @ Northwind: wants the Slack integration before she upgrades to the team plan. said "if it posts to our channel I\'ll pay tomorrow"',
@@ -793,6 +1082,21 @@ footer .copyright { text-transform: uppercase; }
     'weekend: 61 new free signups from the HN comment (thread about build-in-public tools)',
     'next: Slack integration beta target July 15. need to email the waitlist (740 ppl)'
   ].join('\n');
+
+  var EXAMPLE_TEXT_JA = [
+    '月 — 新しいオンボーディングのチェックリストをリリース。1日のはずが3日かかった、いつものやつ。',
+    '火: MRR $4,280（先週の $3,850 から増）。有料ユーザー33名。解約1（例の代理店の人、想定内）',
+    '水 — Northwindのダナと通話。チームプランに上げる前にSlack連携が欲しいとのこと。「うちのチャンネルに投稿できるなら明日にでも払う」と。',
+    'あとシード2社にデモ、まあまあ？ 1社はリテンションを気にしてた、コホート図が要る',
+    '木: CSVエクスポートのバグ修正（指標が空のとき列がずれる）。チケット14件クローズ。サポート受信箱が5月以来はじめてゼロに',
+    '金 — 決定: モバイルアプリはQ4に延期。Webダッシュボードが楔。ADR-007を記述',
+    '週末: HNのコメント（build-in-publicツールのスレッド）から無料登録が61件',
+    '次: Slack連携ベータは7/15目標。ウェイトリスト（740人）にメールする必要あり'
+  ].join('\n');
+
+  function exampleText() {
+    return state.lang === 'ja' ? EXAMPLE_TEXT_JA : EXAMPLE_TEXT_EN;
+  }
 
   var els = {
     source: document.getElementById('source'),
@@ -804,7 +1108,11 @@ footer .copyright { text-transform: uppercase; }
     pageState: document.getElementById('page-state'),
     results: document.getElementById('results'),
     conversion: document.getElementById('conversion'),
-    srStatus: document.getElementById('sr-status')
+    srStatus: document.getElementById('sr-status'),
+    publishToken: document.getElementById('publish-token'),
+    publishHint: document.getElementById('publish-hint'),
+    chX: document.getElementById('ch-x'),
+    chWebhook: document.getElementById('ch-webhook')
   };
 
   var state = {
@@ -813,8 +1121,15 @@ footer .copyright { text-transform: uppercase; }
     lastSourceText: '',
     halted: false,
     shownCode: null,
-    rendered: 0
+    rendered: 0,
+    // UI + generation output language ('en' | 'ja'); resolved at init.
+    lang: 'en',
+    // Publishable content stashed per card so the owner "Publish" button can
+    // re-send the exact generated object to /api/publish.
+    cardData: {}
   };
+  state.lang = detectLang();
+  refreshFormatLabels();
 
   function announce(msg) {
     els.srStatus.textContent = msg;
@@ -897,7 +1212,7 @@ footer .copyright { text-transform: uppercase; }
     if (greeting) html += '<p class="card-meta">' + renderText(greeting, flags) + '</p>';
     sections.forEach(function (s, i) {
       if (!s || typeof s !== 'object') return;
-      var heading = str(s.heading) || ('Section ' + (i + 1));
+      var heading = str(s.heading) || t('secSection', i + 1);
       var body = str(s.body);
       html += '<details class="card-section"' + (i === 0 ? ' open' : '') + '>' +
         '<summary>' + renderText(heading, flags) + '</summary>' +
@@ -913,7 +1228,7 @@ footer .copyright { text-transform: uppercase; }
     var html = '';
     if (hook && posts.length === 0) html += '<p class="card-subject">' + renderText(hook, flags) + '</p>';
     if (posts.length > 0) {
-      html += '<ol class="thread" aria-label="Thread of ' + posts.length + ' posts">' +
+      html += '<ol class="thread" aria-label="' + esc(t('threadAria', posts.length)) + '">' +
         posts.map(function (p, i) {
           return '<li><span class="idx">' + (i + 1) + '/' + posts.length + '</span>' +
             '<p>' + renderText(p, flags) + '</p></li>';
@@ -930,14 +1245,14 @@ footer .copyright { text-transform: uppercase; }
     if (mission) html += '<p class="card-meta">' + renderText(mission, flags) + '</p>';
     var culture = str(c.team_culture);
     if (culture) html += '<p class="card-meta">' + renderText(culture, flags) + '</p>';
-    html += listSection(strList(c.recent_milestones), 'Recent milestones', flags);
+    html += listSection(strList(c.recent_milestones), t('secRecentMilestones'), flags);
     var roles = arr(c.open_roles).map(function (r) {
       if (typeof r === 'string') return { title: r, description: null };
       if (r && typeof r === 'object' && str(r.title)) return { title: r.title, description: str(r.description) };
       return null;
     }).filter(Boolean);
     if (roles.length > 0) {
-      html += '<section><h3 class="card-list-heading">Open roles</h3><ul class="role-list">' +
+      html += '<section><h3 class="card-list-heading">' + esc(t('secOpenRoles')) + '</h3><ul class="role-list">' +
         roles.map(function (r) {
           return '<li><strong>' + renderText(r.title, flags) + '</strong>' +
             (r.description ? '<span>' + renderText(r.description, flags) + '</span>' : '') + '</li>';
@@ -945,7 +1260,7 @@ footer .copyright { text-transform: uppercase; }
     }
     var link = str(c.application_link);
     if (link && /^https?:\/\//i.test(link)) {
-      html += '<p class="card-link"><a href="' + esc(link) + '" rel="noopener noreferrer" target="_blank">Apply &rarr;</a></p>';
+      html += '<p class="card-link"><a href="' + esc(link) + '" rel="noopener noreferrer" target="_blank">' + esc(t('secApply')) + '</a></p>';
     }
     return html;
   }
@@ -956,11 +1271,11 @@ footer .copyright { text-transform: uppercase; }
     if (title) html += '<p class="card-subject">' + renderText(title, flags) + '</p>';
     var since = str(c.since_last_update);
     if (since) html += '<p class="card-meta">' + renderText(since, flags) + '</p>';
-    html += listSection(strList(c.highlights), 'Highlights', flags);
-    html += listSection(strList(c.improvements), 'Improvements', flags);
-    html += listSection(strList(c.known_issues), 'Known issues', flags);
+    html += listSection(strList(c.highlights), t('secHighlights'), flags);
+    html += listSection(strList(c.improvements), t('secImprovements'), flags);
+    html += listSection(strList(c.known_issues), t('secKnownIssues'), flags);
     var next = typeof c.next_steps === 'string' ? [c.next_steps] : strList(c.next_steps);
-    html += listSection(next.filter(function (s) { return s.trim().length > 0; }), 'Next steps', flags);
+    html += listSection(next.filter(function (s) { return s.trim().length > 0; }), t('secNextSteps'), flags);
     var cta = str(c.cta);
     if (cta) html += '<p class="card-cta-box" role="note">' + renderText(cta, flags) + '</p>';
     return html;
@@ -971,10 +1286,10 @@ footer .copyright { text-transform: uppercase; }
     var summary = str(c.period_summary);
     if (summary) html += '<p class="card-subject">' + renderText(summary, flags) + '</p>';
     var groups = [
-      ['key_events', 'Key events'],
-      ['decisions', 'Decisions'],
-      ['open_questions', 'Open questions'],
-      ['action_items', 'Action items']
+      ['key_events', t('secKeyEvents')],
+      ['decisions', t('secDecisions')],
+      ['open_questions', t('secOpenQuestions')],
+      ['action_items', t('secActionItems')]
     ];
     groups.forEach(function (g) {
       var items = strList(c[g[0]]);
@@ -997,18 +1312,18 @@ footer .copyright { text-transform: uppercase; }
 
   function ccStrip(data) {
     if (data.cross_check_skipped) {
-      return '<div class="cc-strip skipped">cross-check unavailable for this run</div>';
+      return '<div class="cc-strip skipped">' + esc(t('ccUnavailable')) + '</div>';
     }
     var n = (data.flags || []).length;
     if (n === 0) {
-      return '<div class="cc-strip clean">&#10003; Cross-check: clean</div>';
+      return '<div class="cc-strip clean">' + esc(t('ccClean')) + '</div>';
     }
-    return '<div class="cc-strip flagged">&#9888; ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged</div>';
+    return '<div class="cc-strip flagged">' + esc(t('ccFlagged', n)) + '</div>';
   }
 
   function flagsDetails(flags) {
     if (!flags || flags.length === 0) return '';
-    return '<details class="flags-details"><summary>Flags (' + flags.length + ')</summary><ul>' +
+    return '<details class="flags-details"><summary>' + esc(t('flagsSummary', flags.length)) + '</summary><ul>' +
       flags.map(function (f) {
         return '<li>' +
           '<span class="flag-verdict">' + esc(f.verdict) + '</span>' +
@@ -1044,20 +1359,36 @@ footer .copyright { text-transform: uppercase; }
     var flags = Array.isArray(data.flags) ? data.flags : [];
     var html = ccStrip(data);
     if (data.schema_fallback) {
-      html += '<p class="card-raw-note">Couldn&rsquo;t shape this one into its layout &mdash; raw output below.</p>';
+      html += '<p class="card-raw-note">' + esc(t('rawNote')) + '</p>';
       html += '<pre class="card-raw">' + esc(String(data.content_raw || '')) + '</pre>';
     } else {
       var content = (data.content && typeof data.content === 'object') ? data.content : {};
       var inner = TEMPLATES[fmt.key](content, flags);
-      html += inner || '<p class="card-empty">Empty draft &mdash; try adding more detail to your notes.</p>';
+      html += inner || '<p class="card-empty">' + esc(t('emptyDraft')) + '</p>';
     }
     html += flagsDetails(flags);
     body.innerHTML = '<div class="card-content">' + html + '</div>';
+
+    // Stash the generated object for the owner Publish button. Raw-fallback
+    // cards (no structured content) can't be published — skip them.
+    var publishable = !data.schema_fallback && data.content && typeof data.content === 'object';
+    if (publishable) {
+      state.cardData[fmt.key] = { format_type: fmt.key, content: data.content };
+      var wrap = document.createElement('div');
+      wrap.className = 'card-publish-wrap';
+      wrap.innerHTML =
+        '<button type="button" class="card-publish" data-format="' + esc(fmt.key) + '">' + esc(t('publishBtn')) + '</button>' +
+        '<p class="card-publish-status" data-format="' + esc(fmt.key) + '" role="status" aria-live="polite"></p>';
+      body.querySelector('.card-content').appendChild(wrap);
+    } else {
+      delete state.cardData[fmt.key];
+    }
+
     state.rendered += 1;
     var n = flags.length;
-    announce(fmt.label + ' ready' +
-      (data.cross_check_skipped ? ', cross-check unavailable.' :
-        n === 0 ? ', cross-check clean.' : ', ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged.'));
+    announce(t('annReady', fmt.label) +
+      (data.cross_check_skipped ? t('annUnavailable') :
+        n === 0 ? t('annClean') : t('annFlagged', n)));
   }
 
   function renderCardError(fmt, message) {
@@ -1066,38 +1397,38 @@ footer .copyright { text-transform: uppercase; }
     card.setAttribute('aria-busy', 'false');
     card.querySelector('.card-body').innerHTML =
       '<div class="card-error"><p>' + esc(message) + '</p>' +
-      '<button type="button" class="retry-btn" data-format="' + esc(fmt.key) + '">Retry</button></div>';
-    announce(fmt.label + ' failed — a retry button is available on its card.');
+      '<button type="button" class="retry-btn" data-format="' + esc(fmt.key) + '">' + esc(t('retry')) + '</button></div>';
+    announce(t('annFailed', fmt.label));
   }
 
   // ---- page-level states ----------------------------------------------------
 
-  var TALLY_BTN =
-    '<button type="button" class="tally-cta" data-tally-open="dWQlbq" data-tally-layout="modal" ' +
-    'data-tally-width="540" data-tally-overlay="1" data-tally-emoji-text="&#10022;" ' +
-    'data-tally-emoji-animation="none" aria-label="Join the Brypo waitlist">Join the waitlist &rarr;</button>';
+  function tallyBtn() {
+    return '<button type="button" class="tally-cta" data-tally-open="dWQlbq" data-tally-layout="modal" ' +
+      'data-tally-width="540" data-tally-overlay="1" data-tally-emoji-text="&#10022;" ' +
+      'data-tally-emoji-animation="none" aria-label="' + esc(t('waitlistCta')) + '">' + esc(t('waitlistCta')) + '</button>';
+  }
 
-  var PAGE_STATES = {
-    budget: {
-      title: 'Today’s budget is used up.',
-      body: '<p>The free tool hit today’s budget — it resets daily. Join the waitlist and we’ll ping you at launch.</p>' + TALLY_BTN
-    },
-    disabled: {
-      title: 'The free tool is taking a breather.',
-      body: '<p>We’ve switched it off for the moment. Join the waitlist and we’ll ping you when it’s back — and at launch.</p>' + TALLY_BTN
-    },
-    rate_limit: {
-      title: 'Whoa — that’s a lot of generating.',
-      body: '<p>You’ve hit the hourly limit. Give it a little while and try again.</p>'
-    },
-    too_long: {
-      title: 'That’s more than a week’s worth.',
-      body: '<p>The input cap is 12,000 characters — trim your notes down and try again.</p>'
+  // Which server/HTTP conditions map to a whole-page notice (vs a per-card
+  // error). Content is resolved per language at render time.
+  var PAGE_STATE_CODES = { budget: 1, disabled: 1, rate_limit: 1, too_long: 1 };
+  function pageStateContent(code) {
+    switch (code) {
+      case 'budget':
+        return { title: t('budgetTitle'), body: '<p>' + esc(t('budgetBody')) + '</p>' + tallyBtn() };
+      case 'disabled':
+        return { title: t('disabledTitle'), body: '<p>' + esc(t('disabledBody')) + '</p>' + tallyBtn() };
+      case 'rate_limit':
+        return { title: t('rateTitle'), body: '<p>' + esc(t('rateBody')) + '</p>' };
+      case 'too_long':
+        return { title: t('tooLongTitle'), body: '<p>' + esc(t('tooLongBody')) + '</p>' };
+      default:
+        return null;
     }
-  };
+  }
 
   function showPageState(code) {
-    var s = PAGE_STATES[code];
+    var s = pageStateContent(code);
     if (!s) return false;
     // Parallel requests hit the same condition together — inject the
     // alert once, not once per format.
@@ -1105,7 +1436,7 @@ footer .copyright { text-transform: uppercase; }
     state.shownCode = code;
     state.halted = true;
     els.pageState.innerHTML =
-      '<div class="page-state" role="alert"><h2>' + s.title + '</h2>' + s.body + '</div>';
+      '<div class="page-state" role="alert"><h2>' + esc(s.title) + '</h2>' + s.body + '</div>';
     els.pageState.hidden = false;
     if (state.rendered === 0) {
       // Nothing useful to keep — swap the whole grid for the notice.
@@ -1115,7 +1446,7 @@ footer .copyright { text-transform: uppercase; }
       els.results.querySelectorAll('.card[aria-busy="true"]').forEach(function (card) {
         card.setAttribute('aria-busy', 'false');
         card.querySelector('.card-body').innerHTML =
-          '<p class="card-empty">Stopped before generating — see the notice above.</p>';
+          '<p class="card-empty">' + esc(t('stoppedBeforeGen')) + '</p>';
       });
     }
     return true;
@@ -1140,7 +1471,8 @@ footer .copyright { text-transform: uppercase; }
       body: JSON.stringify({
         source_text: state.lastSourceText,
         format_type: fmt.key,
-        cross_check: true
+        cross_check: true,
+        language: state.lang
       })
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {
@@ -1149,29 +1481,29 @@ footer .copyright { text-transform: uppercase; }
           // The zone WAF serves its own 429/503 with an HTML body (no
           // JSON code) — map by HTTP status so users still get the
           // friendly page state instead of per-card retry buttons.
-          if (!code || !PAGE_STATES[code]) {
+          if (!code || !PAGE_STATE_CODES[code]) {
             if (res.status === 429) code = 'rate_limit';
             else if (res.status === 503) code = 'disabled';
             else if (res.status === 413) code = 'too_long';
           }
-          if (code && PAGE_STATES[code]) {
+          if (code && PAGE_STATE_CODES[code]) {
             showPageState(code);
           } else if (!state.halted) {
-            renderCardError(fmt, (data && data.error) || 'Something went wrong generating this one.');
+            renderCardError(fmt, (data && data.error) || t('genericError'));
           }
           return;
         }
         if (state.halted) return;
         if (!data) {
           // 200 with an unreadable body — an error, not a clean result.
-          renderCardError(fmt, 'Something went wrong generating this one.');
+          renderCardError(fmt, t('genericError'));
           return;
         }
         renderCard(fmt, data);
         els.conversion.hidden = false;
       });
     }).catch(function () {
-      if (!state.halted) renderCardError(fmt, 'Network hiccup — give it another go.');
+      if (!state.halted) renderCardError(fmt, t('networkError'));
     }).finally(function () {
       state.running -= 1;
       syncGenerateButton();
@@ -1181,13 +1513,20 @@ footer .copyright { text-transform: uppercase; }
   function syncGenerateButton() {
     var busy = state.running > 0;
     els.generate.disabled = busy;
-    els.generate.textContent = busy ? 'Generating…' : 'Generate';
+    els.generate.textContent = busy ? t('generating') : t('generate');
+  }
+
+  // Current selection hint, shared by the toggle handler and the language
+  // switch so both stay in sync with the active language.
+  function updateHint() {
+    var n = FORMATS.filter(function (x) { return state.on[x.key]; }).length;
+    els.hint.textContent = n === 0 ? t('hintPickFormat') : t('hintFormatsSelected', n);
   }
 
   function runGenerate() {
     var text = els.source.value;
     if (text.trim().length === 0) {
-      els.hint.textContent = 'Paste your week first';
+      els.hint.textContent = t('hintPasteFirst');
       els.source.focus();
       return;
     }
@@ -1197,19 +1536,20 @@ footer .copyright { text-transform: uppercase; }
     }
     var selected = FORMATS.filter(function (f) { return state.on[f.key]; });
     if (selected.length === 0) {
-      els.hint.textContent = 'Pick at least one format';
+      els.hint.textContent = t('hintPickFormat');
       return;
     }
-    els.hint.textContent = selected.length + ' format' + (selected.length !== 1 ? 's' : '') + ' selected';
+    els.hint.textContent = t('hintFormatsSelected', selected.length);
     state.lastSourceText = text;
     state.rendered = 0;
+    state.cardData = {};
     clearPageState();
     els.results.innerHTML = '';
     selected.forEach(function (f) { els.results.appendChild(makeCard(f)); });
     // Move focus deliberately before the button disables itself — a
     // disabled control drops keyboard focus to <body> otherwise.
     els.results.focus();
-    announce('Generating ' + selected.length + ' write-up' + (selected.length !== 1 ? 's' : '') + '…');
+    announce(t('genProgress', selected.length));
     selected.forEach(function (f) { fetchFormat(f); });
   }
 
@@ -1225,11 +1565,12 @@ footer .copyright { text-transform: uppercase; }
     // accessible name; state comes from aria-pressed alone.
     btn.setAttribute('aria-label', f.label);
     btn.setAttribute('aria-pressed', 'true');
+    // Keep a handle so the language switch can relabel it in place.
+    f._btn = btn;
     btn.addEventListener('click', function () {
       state.on[f.key] = !state.on[f.key];
       btn.setAttribute('aria-pressed', String(state.on[f.key]));
-      var n = FORMATS.filter(function (x) { return state.on[x.key]; }).length;
-      els.hint.textContent = n === 0 ? 'Pick at least one format' : n + ' format' + (n !== 1 ? 's' : '') + ' selected';
+      updateHint();
     });
     els.toggles.appendChild(btn);
   });
@@ -1245,7 +1586,7 @@ footer .copyright { text-transform: uppercase; }
 
   // Example
   els.exampleBtn.addEventListener('click', function () {
-    els.source.value = EXAMPLE_TEXT;
+    els.source.value = exampleText();
     syncCount();
     els.source.focus();
   });
@@ -1271,6 +1612,144 @@ footer .copyright { text-transform: uppercase; }
     }
     fetchFormat(fmt);
   });
+
+  // ---- owner auto-publish ---------------------------------------------------
+
+  // Token presence alone flips publish mode on (and reveals the per-card
+  // buttons). The token is kept only in memory — never persisted — and is
+  // sent in a header, so it never lands in a request body log.
+  function syncPublishMode() {
+    var on = els.publishToken.value.trim().length > 0;
+    els.results.classList.toggle('publish-on', on);
+  }
+  els.publishToken.addEventListener('input', syncPublishMode);
+
+  function selectedChannels() {
+    var chs = [];
+    if (els.chX.checked) chs.push('x');
+    if (els.chWebhook.checked) chs.push('webhook');
+    return chs;
+  }
+
+  function publishCard(fmt, btn, statusEl) {
+    var token = els.publishToken.value.trim();
+    if (token.length === 0) { setPublishHint(t('needToken'), 'err'); return; }
+    var channels = selectedChannels();
+    if (channels.length === 0) { setPublishHint(t('needChannel'), 'err'); return; }
+    var payload = state.cardData[fmt.key];
+    if (!payload) { setStatus(statusEl, t('nothingToPublish'), 'err'); return; }
+
+    var channelNames = channels.map(function (c) {
+      return c === 'x' ? t('chNameX') : t('chNameWebhook');
+    }).join(', ');
+
+    btn.disabled = true;
+    btn.textContent = t('publishingBtn');
+    setStatus(statusEl, t('publishingTo', channelNames), '');
+
+    fetch('/api/publish', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-publish-token': token },
+      body: JSON.stringify({
+        format_type: payload.format_type,
+        content: payload.content,
+        channels: channels,
+        language: state.lang
+      })
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401) {
+          setStatus(statusEl, t('rejectedToken'), 'err');
+          return;
+        }
+        if (res.status === 503) {
+          setStatus(statusEl, t('publishDisabled'), 'err');
+          return;
+        }
+        if (!data || !Array.isArray(data.results)) {
+          setStatus(statusEl, (data && data.error) || t('publishFailed'), 'err');
+          return;
+        }
+        var parts = data.results.map(function (r) {
+          var name = r.channel === 'x' ? t('chNameX') : t('chNameWebhook');
+          if (r.ok) {
+            return '✓ ' + name + (r.url ? ' — ' + r.url : (r.detail ? ' (' + r.detail + ')' : ''));
+          }
+          return '✗ ' + name + ': ' + (r.detail || 'failed');
+        });
+        setStatus(statusEl, parts.join('  •  '), data.ok ? 'ok' : 'err');
+        announce(data.ok ? t('annPublished', fmt.label) : t('annPublishErr', fmt.label));
+      });
+    }).catch(function () {
+      setStatus(statusEl, t('publishNetErr'), 'err');
+    }).finally(function () {
+      btn.disabled = false;
+      btn.textContent = t('publishBtn');
+    });
+  }
+
+  function setPublishHint(msg, cls) {
+    els.publishHint.textContent = msg;
+    els.publishHint.className = 'publish-hint' + (cls ? ' ' + cls : '');
+  }
+  function setStatus(el, msg, cls) {
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'card-publish-status' + (cls ? ' ' + cls : '');
+  }
+
+  // Publish (delegated)
+  els.results.addEventListener('click', function (e) {
+    var btn = e.target.closest('.card-publish');
+    if (!btn) return;
+    var key = btn.getAttribute('data-format');
+    var fmt = FORMATS.find(function (f) { return f.key === key; });
+    if (!fmt) return;
+    var statusEl = els.results.querySelector('.card-publish-status[data-format="' + key + '"]');
+    publishCard(fmt, btn, statusEl);
+  });
+
+  // ---- language switch ------------------------------------------------------
+
+  // Fill every element tagged with data-i18n / -html / -placeholder from the
+  // active language's table. Already-rendered result cards keep the language
+  // they were generated in — only the surrounding chrome re-localizes.
+  function applyStaticI18n() {
+    document.querySelectorAll('[data-i18n]').forEach(function (el) {
+      el.textContent = t(el.getAttribute('data-i18n'));
+    });
+    document.querySelectorAll('[data-i18n-html]').forEach(function (el) {
+      el.innerHTML = t(el.getAttribute('data-i18n-html'));
+    });
+    document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+      el.setAttribute('placeholder', t(el.getAttribute('data-i18n-placeholder')));
+    });
+  }
+
+  var langBtns = Array.prototype.slice.call(document.querySelectorAll('.lang-btn'));
+
+  function setLang(lang) {
+    state.lang = lang === 'ja' ? 'ja' : 'en';
+    try { localStorage.setItem('brypo_lang', state.lang); } catch (e) { /* storage blocked */ }
+    document.documentElement.lang = state.lang;
+    langBtns.forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === state.lang));
+    });
+    applyStaticI18n();
+    refreshFormatLabels();
+    FORMATS.forEach(function (f) {
+      if (f._btn) { f._btn.textContent = f.label; f._btn.setAttribute('aria-label', f.label); }
+    });
+    syncGenerateButton();
+    updateHint();
+  }
+
+  langBtns.forEach(function (b) {
+    b.addEventListener('click', function () { setLang(b.getAttribute('data-lang')); });
+  });
+
+  // Initial paint in the resolved language (detected/persisted at startup).
+  setLang(state.lang);
 
   // Esc dismisses flag tooltips (WCAG 1.4.13): blur a focused mark,
   // suppress hover tooltips until the pointer moves again.

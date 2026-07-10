@@ -9,3 +9,22 @@ TRY_TOOL_ENABLED=true
 
 # Daily spend cap in USD (UTC day). Launch-day raise: set to 25 in the dashboard.
 DAILY_BUDGET_USD=5
+
+# ---- /api/publish (owner-only auto-post) ------------------------------------
+# Publishing is a live, irreversible action, so it is OFF unless PUBLISH_ENABLED
+# is exactly "true". /try is a public tool — the PUBLISH_TOKEN gate is what stops
+# a random visitor from posting as your account. Keep PUBLISH_TOKEN long/random.
+PUBLISH_ENABLED=false
+PUBLISH_TOKEN=
+
+# X (Twitter) OAuth 1.0a — create an app + user access token in the X developer
+# portal for the account you post as (e.g. @brypoai), with Read+Write permission.
+X_API_KEY=
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_TOKEN_SECRET=
+
+# Generic outbound webhook for platforms without a usable write API (note,
+# LinkedIn) or that need a video pipeline (TikTok, YouTube). Point it at a
+# Zapier / Make / n8n hook; it receives { format_type, text, content }.
+PUBLISH_WEBHOOK_URL=

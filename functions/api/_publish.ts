@@ -16,10 +16,11 @@ import type { FormatType, Language } from "./_lib";
 
 // ---- constants --------------------------------------------------------------
 
-// X counts most posts by a 280 "weighted" length. We chunk on a plain
-// character budget slightly under 280 to leave room for the " 1/ⁿ" numbering
-// and the CJK/emoji weighting X applies (a rough, deliberately conservative
-// approximation — see "Known limitations" in TRY_TOOL_README.md).
+// X's hard cap is 280 *weighted* units, not characters: CJK ideographs, kana,
+// Hangul, fullwidth forms and emoji each weigh 2, and a URL is always 23 (it's
+// shortened to a t.co link). See weightedLength() below. We chunk to a slightly
+// smaller budget so the " 1/ⁿ" numbering suffix always fits without a re-trim.
+export const TWEET_WEIGHTED_MAX = 280;
 export const TWEET_LIMIT = 270;
 
 // A whole thread longer than this many tweets is almost certainly a runaway
@@ -176,27 +177,128 @@ export function toPlainText(
 
 // ---- X thread ---------------------------------------------------------------
 
+// Weight-2 Unicode ranges — an approximation of X's twitter-text config: CJK
+// ideographs & radicals, Hiragana/Katakana, Hangul, fullwidth forms, and emoji.
+// Bias is intentionally toward over-counting (weight 2 when unsure), which only
+// ever makes tweets shorter — never long enough for X to reject.
+function charWeight(cp: number): number {
+  if (
+    (cp >= 0x1100 && cp <= 0x115f) || // Hangul Jamo
+    (cp >= 0x2e80 && cp <= 0x303e) || // CJK radicals … CJK symbols
+    (cp >= 0x3041 && cp <= 0x33ff) || // Hiragana, Katakana … CJK compat
+    (cp >= 0x3400 && cp <= 0x4dbf) || // CJK Ext A
+    (cp >= 0x4e00 && cp <= 0x9fff) || // CJK Unified
+    (cp >= 0xa000 && cp <= 0xa4cf) || // Yi
+    (cp >= 0xa960 && cp <= 0xa97f) || // Hangul Jamo Ext A
+    (cp >= 0xac00 && cp <= 0xd7a3) || // Hangul Syllables
+    (cp >= 0xf900 && cp <= 0xfaff) || // CJK compat ideographs
+    (cp >= 0xfe30 && cp <= 0xfe4f) || // CJK compat forms
+    (cp >= 0xff00 && cp <= 0xff60) || // Fullwidth forms (excl. halfwidth kana)
+    (cp >= 0xffe0 && cp <= 0xffe6) || // Fullwidth signs
+    cp >= 0x1f000 // emoji & supplementary symbols
+  ) {
+    return 2;
+  }
+  return 1;
+}
+
+const URL_WEIGHT = 23;
+const URL_RE = /https?:\/\/\S+/g;
+
+interface Atom {
+  s: string;
+  w: number;
+  /** True if a chunk may end just after this atom (whitespace / JP sentence end). */
+  brk: boolean;
+}
+
+// Break text into weight-bearing atoms. A URL is ONE atom of weight 23 (X never
+// splits a link); everything else is per-code-point so surrogate pairs (emoji)
+// and CJK are measured correctly.
+function atomize(text: string): Atom[] {
+  const atoms: Atom[] = [];
+  const pushChars = (s: string) => {
+    for (const ch of s) {
+      atoms.push({
+        s: ch,
+        w: charWeight(ch.codePointAt(0) as number),
+        // English breaks on spaces; Japanese has none, so also allow a break
+        // right after a sentence-ending mark rather than mid-clause.
+        brk: ch === " " || ch === "\n" || "。、！？".indexOf(ch) !== -1,
+      });
+    }
+  };
+  let last = 0;
+  URL_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = URL_RE.exec(text)) !== null) {
+    pushChars(text.slice(last, m.index));
+    atoms.push({ s: m[0], w: URL_WEIGHT, brk: false });
+    last = m.index + m[0].length;
+  }
+  pushChars(text.slice(last));
+  return atoms;
+}
+
+/** X-weighted length of a string (CJK/emoji = 2, URL = 23, else 1). */
+export function weightedLength(text: string): number {
+  return atomize(text).reduce((sum, a) => sum + a.w, 0);
+}
+
 /**
- * Split one long string into <=limit-char chunks, breaking on whitespace where
- * possible so words aren't cut mid-token. A single token longer than the limit
- * is hard-split (URLs, long identifiers).
+ * Split one string into chunks each of X-weighted length <= limit, preferring
+ * to break after whitespace or a Japanese sentence mark. URLs are kept whole.
+ * A run with no break opportunity (e.g. a long Japanese sentence) is hard-split
+ * at a code-point boundary within budget — never mid-URL, never mid-emoji.
  */
 export function chunkText(text: string, limit: number = TWEET_LIMIT): string[] {
   const t = text.trim();
   if (t.length === 0) return [];
-  if (t.length <= limit) return [t];
+  const atoms = atomize(t);
+  if (atoms.reduce((s, a) => s + a.w, 0) <= limit) return [t];
+
+  const join = (from: number, to: number): string => {
+    let out = "";
+    for (let k = from; k < to; k++) out += atoms[k].s;
+    return out;
+  };
 
   const chunks: string[] = [];
-  let rest = t;
-  while (rest.length > limit) {
-    let cut = rest.lastIndexOf(" ", limit);
-    // No breakable space in range (or it's too early) → hard cut at the limit.
-    if (cut <= 0) cut = limit;
-    chunks.push(rest.slice(0, cut).trim());
-    rest = rest.slice(cut).trim();
+  let start = 0; // first atom of the current chunk
+  let w = 0; // accumulated weight of the current chunk
+  let lastBreak = -1; // atom index just AFTER the last breakable atom in-chunk
+  let i = start;
+  while (i < atoms.length) {
+    const a = atoms[i];
+    if (w + a.w > limit && i > start) {
+      const end = lastBreak > start ? lastBreak : i;
+      chunks.push(join(start, end).trim());
+      start = end;
+      while (start < atoms.length && atoms[start].s === " ") start++;
+      i = start;
+      w = 0;
+      lastBreak = -1;
+      continue;
+    }
+    w += a.w;
+    if (a.brk) lastBreak = i + 1;
+    i++;
   }
-  if (rest.length > 0) chunks.push(rest);
-  return chunks;
+  if (start < atoms.length) chunks.push(join(start, atoms.length).trim());
+  return chunks.filter((c) => c.length > 0);
+}
+
+/** Longest prefix of `text` whose weighted length is <= maxW. */
+function trimToWeight(text: string, maxW: number): string {
+  let out = "";
+  let w = 0;
+  for (const ch of text) {
+    const cw = charWeight(ch.codePointAt(0) as number);
+    if (w + cw > maxW) break;
+    out += ch;
+    w += cw;
+  }
+  return out;
 }
 
 /**
@@ -227,7 +329,7 @@ export function toXThread(
       for (const seg of chunkText(piece)) {
         if (buf.length === 0) {
           buf = seg;
-        } else if (buf.length + 2 + seg.length <= TWEET_LIMIT) {
+        } else if (weightedLength(buf) + 2 + weightedLength(seg) <= TWEET_LIMIT) {
           buf += "\n\n" + seg;
         } else {
           tweets.push(buf);
@@ -247,11 +349,11 @@ export function toXThread(
   if (tweets.length > 1) {
     const total = tweets.length;
     tweets = tweets.map((t, i) => {
-      const suffix = ` ${i + 1}/${total}`;
-      // If numbering would blow the budget, trim the body to make room.
-      const room = TWEET_LIMIT - suffix.length;
-      const body = t.length > room ? t.slice(0, room - 1).trimEnd() + "…" : t;
-      return body + suffix;
+      const suffix = ` ${i + 1}/${total}`; // ASCII → weight === length
+      // The chunk budget (TWEET_LIMIT) already reserves room for numbering, so
+      // this trim is a safety net for a pre-numbered tweet that's near the cap.
+      if (weightedLength(t) + suffix.length <= TWEET_WEIGHTED_MAX) return t + suffix;
+      return trimToWeight(t, TWEET_WEIGHTED_MAX - suffix.length - 1).trimEnd() + "…" + suffix;
     });
   }
   return tweets;

@@ -14,12 +14,14 @@
 
 import {
   TWEET_LIMIT,
+  TWEET_WEIGHTED_MAX,
   MAX_TWEETS,
   isChannel,
   contentToLines,
   toPlainText,
   toXThread,
   chunkText,
+  weightedLength,
   timingSafeEqual,
   percentEncode,
   buildOAuth1Header,
@@ -171,6 +173,52 @@ t("a single token longer than the limit is hard-split", () => {
   eq(chunks.join(""), "x".repeat(120));
 });
 
+// ---- weighted length (X-accurate, CJK/emoji/URL-aware) ----------------------
+
+console.log("unit: weightedLength");
+t("ASCII weighs 1 per char", () => {
+  eq(weightedLength("hello world"), 11);
+});
+t("CJK / kana weigh 2 each", () => {
+  eq(weightedLength("あいう"), 6); // hiragana
+  eq(weightedLength("日本語"), 6); // kanji
+  eq(weightedLength("가나"), 4); // hangul
+});
+t("a URL always weighs 23 regardless of its real length", () => {
+  eq(weightedLength("https://example.com/a-very-long-path-that-exceeds-23-characters"), 23);
+  eq(weightedLength("see https://x.com/x"), 4 + 23); // "see " + url
+});
+t("emoji (surrogate pair) weighs 2, counted once", () => {
+  eq(weightedLength("hi 😀"), 3 + 2);
+});
+
+console.log("unit: chunkText is weighted");
+t("Japanese chunks stay within the WEIGHTED budget (the bug this fixes)", () => {
+  // 200 hiragana = 400 weighted. The old char-based chunker would have emitted
+  // a single 200-char tweet that X rejects (400 > 280). Now each chunk's
+  // weighted length must be <= the budget.
+  const jp = "あ".repeat(200);
+  const chunks = chunkText(jp, 270);
+  assert(chunks.length >= 2, "long JP must split");
+  for (const c of chunks) {
+    assert(weightedLength(c) <= 270, `chunk over weighted budget: ${weightedLength(c)}`);
+  }
+  eq(chunks.join(""), jp); // lossless
+});
+t("breaks on Japanese sentence marks when available", () => {
+  const s = "これは最初の文です。".repeat(40); // ~400 weighted, breakable on 。
+  const chunks = chunkText(s, 270);
+  assert(chunks.length >= 2);
+  // Most chunks should end on a sentence mark rather than mid-clause.
+  assert(chunks.slice(0, -1).some((c) => c.endsWith("。")), "should break on 。");
+});
+t("a URL is never split across chunks", () => {
+  const url = "https://example.com/" + "x".repeat(300);
+  const chunks = chunkText("intro " + url + " outro", 50);
+  assert(chunks.some((c) => c.includes(url)), "URL kept whole in one chunk");
+  chunks.forEach((c) => assert(!c.includes("example.com/xxx") || c.includes(url)));
+});
+
 // ---- toXThread ---------------------------------------------------------------
 
 console.log("unit: toXThread");
@@ -187,6 +235,21 @@ t("multi-tweet thread is numbered and within budget", () => {
 t("single tweet is not numbered", () => {
   const tweets = toXThread("sns", { thread: ["just one"] });
   eq(tweets, ["just one"]);
+});
+
+t("Japanese thread: every posted tweet is within X's 280 weighted cap", () => {
+  const thread = [
+    "あ".repeat(180), // 360 weighted — must be split
+    "これは長い日本語の投稿です。".repeat(20),
+  ];
+  const tweets = toXThread("sns", { thread }, "ja");
+  assert(tweets.length >= 2);
+  for (const tw of tweets) {
+    assert(
+      weightedLength(tw) <= TWEET_WEIGHTED_MAX,
+      `tweet exceeds weighted cap: ${weightedLength(tw)} > ${TWEET_WEIGHTED_MAX}`,
+    );
+  }
 });
 
 t("non-sns formats pack lines rather than one-tweet-per-bullet", () => {

@@ -25,6 +25,7 @@
 
 import { isFormatType, publishUsageKey, toLanguage } from "./_lib";
 import type { FormatType, Language } from "./_lib";
+import { idempotencyPayload } from "./_publish";
 
 // Minimal KV shape (avoids pulling in @cloudflare/workers-types; wrangler's
 // esbuild only strips types). Mirrors the interface in try-generate.ts.
@@ -35,6 +36,7 @@ interface KVNamespace {
     value: string,
     options?: { expirationTtl?: number },
   ): Promise<void>;
+  delete(key: string): Promise<void>;
 }
 import {
   buildOAuth1Header,
@@ -67,6 +69,10 @@ interface Env {
 // quota — a comfortable ceiling for legitimate building-in-public cadence.
 const DEFAULT_PUBLISH_DAILY_LIMIT = 50;
 const PUBLISH_KEY_TTL_S = 3 * 24 * 3600;
+// Idempotency window: how long an identical publish is deduped. Long enough to
+// cover a double-click or a lost-response retry, short enough that a deliberate
+// re-post of the same text later isn't blocked for long.
+const IDEM_TTL_S = 600;
 
 interface PagesContext {
   request: Request;
@@ -100,6 +106,11 @@ function hex(bytes: Uint8Array): string {
   return Array.from(bytes)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+  return hex(new Uint8Array(digest));
 }
 
 /** Post one tweet, optionally as a reply, returning its id. */
@@ -346,6 +357,37 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
     }
   }
 
+  // 5c. Idempotency guard. Posting to a live account is irreversible, and a
+  // double-click or a lost-response retry would post the same content twice.
+  // Reserve a content-hash key before dispatch; a repeat within IDEM_TTL_S is
+  // rejected (409). After dispatch we keep the key on full success (so retries
+  // stay deduped) but delete it on any failure (so a real retry can proceed).
+  // Best-effort: KV has no atomic compare-and-set, so two *simultaneous*
+  // identical requests can still both pass — the in-flight button-disable on
+  // the client covers that common case. Fails OPEN on KV errors.
+  let idemKey: string | null = null;
+  if (env.TRY_KV) {
+    try {
+      idemKey =
+        "idem:" +
+        (await sha256Hex(idempotencyPayload(formatType, lang, uniqueChannels, contentObj)));
+      if ((await env.TRY_KV.get(idemKey)) !== null) {
+        return finish(
+          errorResponse(
+            409,
+            "duplicate",
+            "This exact post was just published — not sending it again.",
+          ),
+          uniqueChannels,
+          { idempotent: true },
+        );
+      }
+      await env.TRY_KV.put(idemKey, "pending", { expirationTtl: IDEM_TTL_S });
+    } catch {
+      idemKey = null; // fail open
+    }
+  }
+
   // 6. Dispatch (channels run in parallel — one failing must not block others).
   const results = await Promise.all(
     uniqueChannels.map((ch) =>
@@ -357,6 +399,21 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
 
   const anyOk = results.some((r) => r.ok);
   const allOk = results.every((r) => r.ok);
+
+  // Finalize idempotency: keep the key only on full success (future identical
+  // posts are deduped); release it otherwise so the owner can retry a failure.
+  if (idemKey && env.TRY_KV) {
+    try {
+      if (allOk) {
+        await env.TRY_KV.put(idemKey, "done", { expirationTtl: IDEM_TTL_S });
+      } else {
+        await env.TRY_KV.delete(idemKey);
+      }
+    } catch {
+      // best-effort — a stale "pending" simply expires after IDEM_TTL_S.
+    }
+  }
+
   // 200 if everything posted, 207-style semantics folded into 200 when partial,
   // 502 only when every channel failed (so the client shows a clear error).
   const status = allOk ? 200 : anyOk ? 200 : 502;

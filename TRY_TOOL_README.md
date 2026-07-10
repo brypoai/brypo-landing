@@ -252,6 +252,15 @@ touching this repo.
 - **Publish: partial threads aren't rolled back**: an X thread that fails
   midway leaves the already-posted tweets live (the response reports how far
   it got); reconcile by hand.
+- **Publish: idempotency is best-effort**: an identical publish (same
+  format + language + channels + content) within `IDEM_TTL_S` (10 min) is
+  deduped via a content-hash key in `TRY_KV` → `409 code=duplicate`, which
+  stops a double-click or a lost-response retry from posting twice. The key is
+  kept only on full success (a failed attempt releases it so you can retry).
+  KV has no atomic compare-and-set, so two *simultaneous* identical requests
+  can still both slip through — the client disables the button while a request
+  is in flight, which covers that common case. To deliberately re-post the
+  exact same text, wait out the window or change a character.
 - **Publish: tweet length is X-weighted**: chunking measures X's *weighted*
   length (`weightedLength` in `_publish.ts`) — CJK/kana/Hangul/fullwidth and
   emoji count as 2, a URL as 23 — so Japanese and emoji/URL-heavy threads stay

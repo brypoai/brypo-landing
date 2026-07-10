@@ -22,6 +22,7 @@ import {
   toXThread,
   chunkText,
   weightedLength,
+  idempotencyPayload,
   timingSafeEqual,
   percentEncode,
   buildOAuth1Header,
@@ -310,6 +311,34 @@ t("Japanese directive instructs Japanese output but keeps schema keys/claims", (
   const cc = crossCheckLanguageDirective("ja");
   assert(cc.includes("日本語"), "cross-check reason in Japanese");
   assert(/verbatim/i.test(cc), "claim_text must stay verbatim");
+});
+
+// ---- idempotency payload -----------------------------------------------------
+
+console.log("unit: idempotencyPayload");
+t("same action → same payload regardless of channel / key order", () => {
+  const a = idempotencyPayload("sns", "en", ["x", "webhook"], { b: 1, a: 2 });
+  const b = idempotencyPayload("sns", "en", ["webhook", "x"], { a: 2, b: 1 });
+  eq(a, b);
+});
+t("duplicate channels don't change the payload", () => {
+  eq(
+    idempotencyPayload("sns", "en", ["x", "x"], { a: 1 }),
+    idempotencyPayload("sns", "en", ["x"], { a: 1 }),
+  );
+});
+t("different content / format / language / channels → different payload", () => {
+  const base = idempotencyPayload("sns", "en", ["x"], { a: 1 });
+  assert(base !== idempotencyPayload("sns", "en", ["x"], { a: 2 }), "content");
+  assert(base !== idempotencyPayload("investor", "en", ["x"], { a: 1 }), "format");
+  assert(base !== idempotencyPayload("sns", "ja", ["x"], { a: 1 }), "language");
+  assert(base !== idempotencyPayload("sns", "en", ["webhook"], { a: 1 }), "channels");
+});
+t("nested content compares structurally, not by key order", () => {
+  eq(
+    idempotencyPayload("internal", "en", ["x"], { s: { x: 1, y: [2, 3] } }),
+    idempotencyPayload("internal", "en", ["x"], { s: { y: [2, 3], x: 1 } }),
+  );
 });
 
 // ---- publish rate-limit key --------------------------------------------------

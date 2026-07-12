@@ -5,6 +5,7 @@
   "description": "Static landing for brypo.com + Cloudflare Pages Functions powering the /try mini-tool",
   "scripts": {
     "dev": "wrangler pages dev . --kv TRY_KV --compatibility-date=2026-01-01",
+    "test": "node scripts/test-crosscheck.mjs --unit && node scripts/test-publish.mjs",
     "test:crosscheck": "node scripts/test-crosscheck.mjs",
     "test:publish": "node scripts/test-publish.mjs"
   },

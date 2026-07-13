@@ -210,6 +210,59 @@ touching this repo.
   ~$0.09–0.10 for a full 5-format run. `DAILY_BUDGET_USD=5` ≈ ~50 full
   runs/day; `25` ≈ ~250 runs/day.
 
+## Drift audit vs the app engine (C-5, 2026-07-14)
+
+The 5 generation prompts and the cross-check prompt in `_prompts.ts` are
+**manual copies** of the app engine (`brypo` repo,
+`supabase/functions/format-render/index.ts`) — this section is the
+required audit whenever the app's prompts/L2 evolve (brypo CLAUDE.md §4,
+brypo docs/18 §3 C-5). Audited at brypo `c7573c2` ⇄ landing `0898df3`.
+
+### Intentional adaptations (no action — re-verify, don't "fix")
+
+| Area | Difference | Why intentional |
+|---|---|---|
+| All 5 generation prompts | Provenance contract removed (`included_fact_ids` / `numbers_used` and every rule referencing them) | /try feeds raw pasted text; there are no fact ids (documented in `_prompts.ts` header) |
+| investor / sns | "MUST contain a metric" → conditioned on the input containing one | Raw text has no guaranteed metrics; unconditional demand pressures invention |
+| hiring | `application_link` placeholder URL → "only if the input contains one, else empty" | brypo.com placeholder would be wrong for arbitrary /try founders |
+| customer | `next_steps` string → array | Aligned to the app's Zod schema, which was already array (`_lib.ts` note) |
+| internal | "role distinction" block removed | No Internal Version row exists in /try |
+| Cross-check | paragraphs-vs-OCR reframed to output-vs-source; `paragraph_location` → verbatim `claim_text` (non-verbatim discarded); `kind` taxonomy added | No paragraph array / OCR in /try; verbatim guard is the L2 unknown-location-drop equivalent |
+| /try has no pass/fail gate | App computes `cross_check_passed` (B-7 v2); /try returns flags only | /try is advisory; there is no persisted deliverable to gate |
+| Model / tokens | — | Exact match: `claude-haiku-4-5-20251001`, generation 4096 / cross-check 2048 |
+
+### Fixes applied (PR #9, 2026-07-14)
+
+1. **Generation injection guard (C-1 port)** — the generation call passed
+   `sourceText` raw (the repo's only unguarded LLM input path).
+   Now: `GENERATION_INJECTION_GUARD` suffix + `<<<FOUNDER_NOTES>>>`
+   delimiters, matching the app's `GENERATION_INJECTION_GUARD` posture.
+2. **B-7 display tiering** — all flags used to render with equal weight;
+   `unsupported` + low-confidence flags are the dominant false-positive
+   source (the exact B-7 insight). Now: `isCriticalFlag` = `contradicted`
+   × high/medium (same predicate as the app's `isBlockingL2Violation`);
+   cc-strip counts critical vs advisory separately, the flags list sorts
+   critical first and dims advisory, inline `<mark>`s are lighter for
+   advisory. Still no gate.
+
+### Reverse drift — the APP should adopt landing (recorded, not fixed here)
+
+Landing's cross-check prompt is ahead of the app's `L2_SYSTEM_PROMPT` on
+two points; candidate back-ports **in the brypo repo** (prompts change →
+dev deploy + dogfood check):
+
+1. Landing flags *invented specifics inside forward-looking sentences*
+   (a made-up "launching August 3" is unsupported even in future tense);
+   app L2 rule 4 exempts ALL forward-looking statements.
+2. Landing checks claims in *subjects / titles / headlines / hooks*; app
+   L2 rule 5 says "Do NOT flag headings, titles" — in latent tension with
+   the app's own investor prompt requiring a metric in the subject (a
+   wrong subject metric would go unflagged).
+
+One cosmetic note: landing's investor Metrics body dropped the app's
+"+ bulleted list of the key metric facts" formatting hint — judged
+intentional (free-string field, not load-bearing).
+
 ## Known limitations
 
 - **KV races**: budget/rate counters are read-modify-write; concurrent

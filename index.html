@@ -217,25 +217,6 @@ main {
   margin-right: 0.4em;
 }
 
-/* ===== Tagline ===== */
-.tagline {
-  font-family: var(--font-display);
-  font-size: clamp(1.4rem, 3.2vw, 2rem);
-  font-weight: 300;
-  line-height: 1.3;
-  color: var(--fg-soft);
-  margin-bottom: clamp(2.5rem, 5vw, 4rem);
-  letter-spacing: -0.015em;
-  max-width: 22ch;
-  font-variation-settings: "opsz" 60;
-}
-
-.tagline em {
-  font-style: italic;
-  font-weight: 500;
-  color: var(--fg);
-}
-
 /* ===== Description ===== */
 .body-text {
   font-family: var(--font-mono);
@@ -249,30 +230,6 @@ main {
 .body-text strong {
   color: var(--fg);
   font-weight: 500;
-}
-
-/* ===== Format chips ===== */
-.formats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: clamp(2.5rem, 5vw, 4rem);
-}
-
-.chip {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 0.4em 0.85em;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--fg-soft);
-  letter-spacing: 0.01em;
-  transition: all 0.2s ease;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* ===== Hero hook (you-focused) ===== */
@@ -381,29 +338,6 @@ main {
   margin-bottom: clamp(3rem, 6vw, 5rem);
   max-width: 540px;
   align-items: flex-start;
-}
-
-.waitlist input {
-  flex: 1;
-  min-width: 220px;
-  padding: 0.95rem 1.1rem;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  letter-spacing: 0.01em;
-  transition: border-color 0.2s ease;
-}
-
-.waitlist input::placeholder {
-  color: var(--muted);
-}
-
-.waitlist input:focus {
-  outline: none;
-  border-color: var(--accent);
 }
 
 .waitlist button,
@@ -569,10 +503,243 @@ footer .copyright {
   .top .badge:last-child { display: none; }
   .brand { letter-spacing: -0.05em; }
   .body-text { font-size: 13.5px; }
-  .formats { gap: 0.4rem; }
-  .chip { font-size: 11px; padding: 0.35em 0.7em; }
   footer { font-size: 11px; gap: 0.75rem; }
   footer .links { gap: 1rem; }
+}
+
+/* ===== Press Run motion system =====
+   Every effect below is gated on html.fx, which the pre-paint head
+   script adds ONLY when (prefers-reduced-motion: no-preference) AND
+   IntersectionObserver exist. Without .fx nothing is ever hidden —
+   reduced-motion / no-JS / old browsers get today's static page.
+   Easing vocabulary (only these): press cubic-bezier(.16,1,.3,1) mask
+   rises · ink cubic-bezier(.4,0,.2,1) wipes/strikes/rules · stamp
+   cubic-bezier(.34,1.3,.64,1) stamps · reveal cubic-bezier(.2,.6,.3,1). */
+
+/* 1. Brand rise + period stamp (load) */
+.brand-mask {
+  display: inline-block;
+  overflow: hidden;
+  overflow: clip;
+  padding-bottom: 0.16em; /* keep the y descender inside the mask */
+  margin-bottom: -0.16em;
+}
+
+.brand-word { display: inline-block; }
+
+.fx .brand-word {
+  transform: translateY(112%);
+  animation: brand-rise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
+}
+
+@keyframes brand-rise {
+  to { transform: translateY(0); }
+}
+
+.brand .stroke {
+  display: inline-block;
+  transform-origin: 50% 80%;
+}
+
+.fx .brand .stroke {
+  opacity: 0;
+  animation: stamp 0.38s cubic-bezier(0.34, 1.3, 0.64, 1) 0.75s both;
+}
+
+@keyframes stamp {
+  0% { opacity: 0; transform: scale(1.7); }
+  60% { opacity: 1; transform: scale(0.92); }
+  100% { opacity: 1; transform: none; }
+}
+
+/* 2. Hero hook line-mask rise (load) */
+.hook-line {
+  display: block;
+  overflow: hidden;
+  overflow: clip;
+  padding-block: 0.06em;
+}
+
+.hook-inner { display: inline-block; }
+
+.fx .hook-line:nth-child(1) .hook-inner {
+  transform: translateY(110%);
+  animation: line-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
+}
+
+.fx .hook-line:nth-child(2) .hook-inner {
+  transform: translateY(110%);
+  animation: line-rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) 0.47s both;
+}
+
+@keyframes line-rise {
+  to { transform: translateY(0); }
+}
+
+/* 3. Live strikethrough on "crypto" (load). Non-.fx keeps the static
+   text-decoration from .crossed — always struck, never animated. */
+.fx .crossed {
+  text-decoration: none;
+  position: relative;
+}
+
+.fx .crossed::after {
+  content: '';
+  position: absolute;
+  left: -0.05em;
+  right: -0.05em;
+  top: 0.58em;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  animation: strike 0.35s cubic-bezier(0.4, 0, 0.2, 1) 1.15s both;
+}
+
+@keyframes strike {
+  to { transform: scaleX(1); }
+}
+
+/* 4. SIGNATURE — the Press Run (proof grid, IntersectionObserver
+   one-shot). Rule prints down, quotes ink-wipe in, arrows extend,
+   labels stamp in accent then cool to gray; the tally counts 1→5. */
+.proof-grid { position: relative; }
+
+.proof-count {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.8rem;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.09em;
+}
+
+.fx .proof-grid { border-left-color: transparent; }
+
+.fx .proof-grid::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  background: var(--accent);
+  transform: scaleY(0);
+  transform-origin: top;
+}
+
+.fx .proof-grid.in::before {
+  animation: rule-down 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes rule-down {
+  to { transform: scaleY(1); }
+}
+
+/* negative insets: don't shave italic overhangs / quote marks */
+.fx .proof-grid .proof-quote { clip-path: inset(-8% 102% -8% -2%); }
+
+.fx .proof-grid .proof-arrow {
+  opacity: 0;
+  transform: scaleX(0.4);
+  transform-origin: left center;
+}
+
+.fx .proof-grid .proof-label {
+  opacity: 0;
+  transform: scale(1.12);
+  transform-origin: 0 60%;
+  color: var(--accent);
+}
+
+.fx .proof-grid.in .proof-quote {
+  animation: wipe 0.45s cubic-bezier(0.4, 0, 0.2, 1) var(--d, 0ms) forwards;
+}
+
+/* --d already carries the per-column offset (quote +0 / arrow +200 /
+   label +320ms, set per child by the script) on top of the row cadence. */
+.fx .proof-grid.in .proof-arrow {
+  animation: extend 0.35s cubic-bezier(0.2, 0.6, 0.3, 1) var(--d, 0ms) forwards;
+}
+
+.fx .proof-grid.in .proof-label {
+  animation:
+    stamp-in 0.32s cubic-bezier(0.34, 1.3, 0.64, 1) var(--d, 0ms) forwards,
+    cool 0.9s ease calc(var(--d, 0ms) + 320ms) forwards;
+}
+
+@keyframes wipe {
+  to { clip-path: inset(-8% -2% -8% -2%); }
+}
+
+@keyframes extend {
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes stamp-in {
+  0% { opacity: 0; transform: scale(1.12); }
+  100% { opacity: 1; transform: none; }
+}
+
+@keyframes cool {
+  to { color: var(--fg-soft); }
+}
+
+@media (max-width: 600px) {
+  /* mobile labels are already accent-colored — stamp in, skip the cool */
+  .fx .proof-grid.in .proof-label {
+    animation: stamp-in 0.32s cubic-bezier(0.34, 1.3, 0.64, 1) var(--d, 0ms) forwards;
+  }
+}
+
+/* 5. Below-fold reveals (IntersectionObserver, one-shot) */
+.fx .hero-closing,
+.fx .origin,
+.fx .waitlist-repeat,
+.fx footer {
+  opacity: 0;
+  transform: translateY(14px);
+  transition:
+    opacity 0.6s cubic-bezier(0.2, 0.6, 0.3, 1),
+    transform 0.6s cubic-bezier(0.2, 0.6, 0.3, 1);
+}
+
+.fx .hero-closing.in,
+.fx .origin.in,
+.fx .waitlist-repeat.in,
+.fx footer.in {
+  opacity: 1;
+  transform: none;
+}
+
+/* 6. Closing underline — the page's single accent underline */
+.hero-closing strong { position: relative; }
+
+.fx .hero-closing strong::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0.05em;
+  bottom: -0.1em;
+  height: 2px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.55s cubic-bezier(0.2, 0.6, 0.3, 1) 0.35s;
+}
+
+.fx .hero-closing.in strong::after { transform: scaleX(1); }
+
+/* 7. CTA arrow nudge (hover / focus) */
+.cta-arrow {
+  display: inline-block;
+  transition: transform 0.25s cubic-bezier(0.2, 0.6, 0.3, 1);
+}
+
+.waitlist-cta:hover .cta-arrow,
+.waitlist-cta:focus-visible .cta-arrow {
+  transform: translateX(0.35em);
 }
 
 /* ===== Reduced motion ===== */
@@ -582,6 +749,14 @@ footer .copyright {
   * { transition: none !important; }
 }
 </style>
+<script>
+/* Pre-paint motion gate: .fx opts INTO animation. Reduced-motion,
+   no-JS, and browsers without IntersectionObserver never get hidden
+   states — they render the static page. */
+matchMedia('(prefers-reduced-motion: no-preference)').matches
+  && 'IntersectionObserver' in window
+  && document.documentElement.classList.add('fx');
+</script>
 </head>
 
 <body>
@@ -594,7 +769,7 @@ footer .copyright {
   </header>
 
   <!-- Brand -->
-  <h1 class="brand reveal">Brypo<span class="stroke">.</span></h1>
+  <h1 class="brand"><span class="brand-mask"><span class="brand-word">Brypo</span></span><span class="stroke">.</span></h1>
 
   <!-- Aside disambiguation -->
   <p class="brand-aside reveal">
@@ -602,9 +777,9 @@ footer .copyright {
   </p>
 
   <!-- Hero hook (you-focused, replaces tagline) -->
-  <h2 class="hero-hook reveal">
-    You shipped this week.<br>
-    <span class="hook-secondary">You'll write about it 5 times.</span>
+  <h2 class="hero-hook">
+    <span class="hook-line"><span class="hook-inner">You shipped this week.</span></span>
+    <span class="hook-line"><span class="hook-inner hook-secondary">You'll write about it 5 times.</span></span>
   </h2>
 
   <!-- Primary CTA: above the fold, Tally popup -->
@@ -620,14 +795,17 @@ footer .copyright {
       data-tally-emoji-animation="none"
       aria-label="Join the Brypo waitlist"
     >
-      Join the waitlist &rarr;
+      Join the waitlist <span class="cta-arrow">&rarr;</span>
     </button>
     <p class="waitlist-meta">No spam. One source. Five stories. When ready.</p>
     <p class="waitlist-alt"><a href="/try">or try the free tool &rarr;</a></p>
   </div>
 
-  <!-- Proof grid: dogfood quotes mapped to stakeholder formats -->
-  <div class="proof-grid reveal" aria-label="Same week, five formats">
+  <!-- Proof grid: dogfood quotes mapped to stakeholder formats.
+       .fx turns this into the Press Run (rule prints, quotes wipe in,
+       arrows extend, labels stamp, tally counts 1→5). Static page ships
+       the truthful final state: everything visible, tally 5/5. -->
+  <div class="proof-grid" aria-label="Same week, five formats">
     <span class="proof-quote">&ldquo;Hosting $400 &rarr; $200/yr.&rdquo;</span>
     <span class="proof-arrow">&rarr;</span>
     <span class="proof-label">Investor update</span>
@@ -647,16 +825,18 @@ footer .copyright {
     <span class="proof-quote">&ldquo;ADR-001: Vercel &rarr; Hetzner.&rdquo;</span>
     <span class="proof-arrow">&rarr;</span>
     <span class="proof-label">Internal doc</span>
+
+    <span class="proof-count" aria-hidden="true">5/5</span>
   </div>
 
   <!-- Closing -->
-  <p class="hero-closing reveal">
+  <p class="hero-closing">
     Same week. Same proof. Five rewrites.<br>
     <strong>Brypo does it once.</strong>
   </p>
 
   <!-- Origin -->
-  <section class="origin reveal">
+  <section class="origin">
     <h3>About the name</h3>
     <p>
       <code>Brypo</code> stands for <strong>Bring Your Proof Out</strong>.
@@ -668,7 +848,7 @@ footer .copyright {
   </section>
 
   <!-- Repeat CTA: before footer, Tally popup -->
-  <div class="waitlist waitlist-repeat reveal">
+  <div class="waitlist waitlist-repeat">
     <button
       type="button"
       class="waitlist-cta"
@@ -680,12 +860,12 @@ footer .copyright {
       data-tally-emoji-animation="none"
       aria-label="Join the Brypo waitlist"
     >
-      Join &rarr; write once
+      Join <span class="cta-arrow">&rarr;</span> write once
     </button>
   </div>
 
   <!-- Footer -->
-  <footer class="reveal">
+  <footer>
     <span class="copyright">© 2026 Brypo</span>
     <nav class="links">
       <a href="/try">Try</a>
@@ -696,5 +876,58 @@ footer .copyright {
   </footer>
 
 </main>
+
+<script>
+/* Press Run driver. Only runs when the head gate added .fx — otherwise
+   the page stays fully static (tally already ships as "5/5"). One
+   IntersectionObserver, one-shot per target, zero steady-state work. */
+(function () {
+  if (!document.documentElement.classList.contains('fx')) return;
+  var grid = document.querySelector('.proof-grid');
+  var count = document.querySelector('.proof-count');
+
+  /* Rewind the tally to its animated starting point. */
+  if (count) count.textContent = '0/5';
+
+  /* Per-cell delay: row cadence 140ms; column offsets quote +0 /
+     arrow +200 / label +320. The 16th child (the tally) gets a value
+     too, but nothing animated reads it. */
+  if (grid) {
+    Array.prototype.forEach.call(grid.children, function (el, i) {
+      el.style.setProperty(
+        '--d',
+        Math.floor(i / 3) * 140 + [0, 200, 320][i % 3] + 'ms'
+      );
+    });
+  }
+
+  function tally() {
+    for (var n = 1; n <= 5; n++) {
+      (function (n) {
+        setTimeout(function () {
+          count.textContent = n + '/5';
+          if (n === 5) count.style.color = 'var(--accent)';
+        }, 380 + (n - 1) * 140);
+      })(n);
+    }
+  }
+
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (!e.isIntersecting) return;
+      e.target.classList.add('in');
+      io.unobserve(e.target);
+      if (e.target === grid && count) tally();
+    });
+  }, { threshold: 0.25, rootMargin: '0px 0px -8% 0px' });
+
+  [grid,
+   document.querySelector('.hero-closing'),
+   document.querySelector('.origin'),
+   document.querySelector('.waitlist-repeat'),
+   document.querySelector('footer')]
+    .forEach(function (el) { if (el) io.observe(el); });
+})();
+</script>
 </body>
 </html>

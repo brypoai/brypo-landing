@@ -217,25 +217,6 @@ main {
   margin-right: 0.4em;
 }
 
-/* ===== Tagline ===== */
-.tagline {
-  font-family: var(--font-display);
-  font-size: clamp(1.4rem, 3.2vw, 2rem);
-  font-weight: 300;
-  line-height: 1.3;
-  color: var(--fg-soft);
-  margin-bottom: clamp(2.5rem, 5vw, 4rem);
-  letter-spacing: -0.015em;
-  max-width: 22ch;
-  font-variation-settings: "opsz" 60;
-}
-
-.tagline em {
-  font-style: italic;
-  font-weight: 500;
-  color: var(--fg);
-}
-
 /* ===== Description ===== */
 .body-text {
   font-family: var(--font-mono);
@@ -249,30 +230,6 @@ main {
 .body-text strong {
   color: var(--fg);
   font-weight: 500;
-}
-
-/* ===== Format chips ===== */
-.formats {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: clamp(2.5rem, 5vw, 4rem);
-}
-
-.chip {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  padding: 0.4em 0.85em;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  color: var(--fg-soft);
-  letter-spacing: 0.01em;
-  transition: all 0.2s ease;
-}
-
-.chip:hover {
-  border-color: var(--accent);
-  color: var(--accent);
 }
 
 /* ===== Hero hook (you-focused) ===== */
@@ -381,29 +338,6 @@ main {
   margin-bottom: clamp(3rem, 6vw, 5rem);
   max-width: 540px;
   align-items: flex-start;
-}
-
-.waitlist input {
-  flex: 1;
-  min-width: 220px;
-  padding: 0.95rem 1.1rem;
-  background: var(--bg-soft);
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: 14px;
-  letter-spacing: 0.01em;
-  transition: border-color 0.2s ease;
-}
-
-.waitlist input::placeholder {
-  color: var(--muted);
-}
-
-.waitlist input:focus {
-  outline: none;
-  border-color: var(--accent);
 }
 
 .waitlist button,
@@ -569,8 +503,6 @@ footer .copyright {
   .top .badge:last-child { display: none; }
   .brand { letter-spacing: -0.05em; }
   .body-text { font-size: 13.5px; }
-  .formats { gap: 0.4rem; }
-  .chip { font-size: 11px; padding: 0.35em 0.7em; }
   footer { font-size: 11px; gap: 0.75rem; }
   footer .links { gap: 1rem; }
 }

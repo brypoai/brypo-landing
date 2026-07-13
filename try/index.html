@@ -404,6 +404,7 @@ textarea#source:focus { outline: none; border-color: var(--accent); }
 }
 .cc-strip.clean { color: var(--muted-hi); }
 .cc-strip.flagged { color: var(--accent); font-weight: 500; }
+.cc-strip.advisory { color: var(--muted-hi); }
 .cc-strip.skipped { color: var(--muted-hi); font-style: italic; }
 
 /* Skeleton shimmer */
@@ -532,6 +533,15 @@ mark.flagged {
   cursor: help;
   position: relative;
 }
+
+/* B-7 tiering: advisory flags (unsupported / low-confidence) highlight
+   lighter than hard contradictions. */
+mark.flagged.advisory {
+  background: rgba(232, 85, 59, 0.07);
+  border-bottom-style: dotted;
+}
+
+.flags-details li.flag-advisory { opacity: 0.72; }
 
 mark.flagged:hover::after, mark.flagged:focus::after {
   content: attr(data-reason);
@@ -838,8 +848,8 @@ footer .copyright { text-transform: uppercase; }
   <aside class="conversion" id="conversion" hidden>
     <p data-i18n-html="conversionBody">
       <strong>This is the free slice.</strong> Full Brypo works from your real
-      evidence &mdash; screenshots, Slack, recordings &mdash; and keeps every
-      version honest.
+      evidence &mdash; screenshots, pasted Slack threads, notes &mdash; and
+      keeps every version honest.
     </p>
     <p class="conversion-note" data-i18n="conversionNote">
       The closed beta is invite-only and English-only for now &mdash; we
@@ -913,7 +923,10 @@ footer .copyright { text-transform: uppercase; }
       annPublishErr: function (label) { return label + ' publish had errors.'; },
       ccUnavailable: 'cross-check unavailable for this run',
       ccClean: '✓ Cross-check: clean',
-      ccFlagged: function (n) { return '⚠ ' + n + ' claim' + (n !== 1 ? 's' : '') + ' flagged'; },
+      ccFlagged: function (n) { return '⚠ ' + n + ' claim' + (n !== 1 ? 's' : '') + ' contradicted'; },
+      ccAdvisory: function (n) { return '✓ No hard contradictions — ' + n + ' advisory flag' + (n !== 1 ? 's' : '') + ' to review'; },
+      ccAdvisorySuffix: function (n) { return ' (+' + n + ' advisory)'; },
+      flagAdvisoryTag: 'advisory',
       flagsSummary: function (n) { return 'Flags (' + n + ')'; },
       rawNote: 'Couldn’t shape this one into its layout — raw output below.',
       emptyDraft: 'Empty draft — try adding more detail to your notes.',
@@ -953,7 +966,7 @@ footer .copyright { text-transform: uppercase; }
       channels: 'Channels',
       channelX: 'X (Twitter)',
       channelWebhook: 'Webhook (note / LinkedIn / TikTok / YouTube via Zapier / Make)',
-      conversionBody: '<strong>This is the free slice.</strong> Full Brypo works from your real evidence — screenshots, Slack, recordings — and keeps every version honest.',
+      conversionBody: '<strong>This is the free slice.</strong> Full Brypo works from your real evidence — screenshots, pasted Slack threads, notes — and keeps every version honest.',
       conversionNote: 'The closed beta is invite-only for now — we invite from the waitlist.',
       waitlistCta: 'Join the waitlist →',
       navHome: 'Home',
@@ -997,7 +1010,10 @@ footer .copyright { text-transform: uppercase; }
       annPublishErr: function (label) { return label + 'の投稿でエラーがありました。'; },
       ccUnavailable: 'この生成ではクロスチェックを利用できません',
       ccClean: '✓ クロスチェック: クリーン',
-      ccFlagged: function (n) { return '⚠ ' + n + '件の主張にフラグ'; },
+      ccFlagged: function (n) { return '⚠ ' + n + '件の主張に矛盾フラグ'; },
+      ccAdvisory: function (n) { return '✓ 明確な矛盾なし — 要確認の注意フラグ' + n + '件'; },
+      ccAdvisorySuffix: function (n) { return '（+注意' + n + '件）'; },
+      flagAdvisoryTag: '注意',
       flagsSummary: function (n) { return 'フラグ (' + n + ')'; },
       rawNote: 'このフォーマットに整形できませんでした — 以下は生の出力です。',
       emptyDraft: '内容が空でした — メモをもう少し詳しく書いてみてください。',
@@ -1037,7 +1053,7 @@ footer .copyright { text-transform: uppercase; }
       channels: 'チャンネル',
       channelX: 'X (Twitter)',
       channelWebhook: 'Webhook（note / LinkedIn / TikTok / YouTube を Zapier / Make 経由で）',
-      conversionBody: '<strong>これは無料版の一部です。</strong> 製品版のBrypoは、スクリーンショット・Slack・録画といった実際の証拠から動き、すべてのバージョンを正直に保ちます。',
+      conversionBody: '<strong>これは無料版の一部です。</strong> 製品版のBrypoは、スクリーンショット・Slackの貼り付け・メモといった実際の証拠から動き、すべてのバージョンを正直に保ちます。',
       conversionNote: 'クローズドベータは現在、招待制です — ウェイトリストから順にご招待します。',
       waitlistCta: 'ウェイトリストに登録 →',
       navHome: 'ホーム',
@@ -1196,11 +1212,13 @@ footer .copyright { text-transform: uppercase; }
     var pos = 0;
     ranges.forEach(function (r) {
       var reason = r.f.verdict + ' — ' + r.f.reason;
+      // B-7 tiering: advisory flags get a lighter highlight class.
+      var cls = isCriticalFlag(r.f) ? 'flagged' : 'flagged advisory';
       // No aria-label: it would replace the claim text as the accessible
       // name. The visible claim stays the content; the reason rides along
       // in a visually-hidden span so screen readers get both.
       out += esc(text.slice(pos, r.start));
-      out += '<mark class="flagged" tabindex="0" data-reason="' + esc(reason) + '">' +
+      out += '<mark class="' + cls + '" tabindex="0" data-reason="' + esc(reason) + '">' +
         esc(text.slice(r.start, r.end)) +
         '<span class="sr-only"> (flagged: ' + esc(reason) + ')</span></mark>';
       pos = r.end;
@@ -1339,23 +1357,46 @@ footer .copyright { text-transform: uppercase; }
 
   // ---- cross-check UI -------------------------------------------------------
 
+  // B-7 tiering (ported from the app's verdict rule v2): a hard flag is a
+  // "contradicted" verdict at high/medium confidence — the same predicate
+  // the app uses for blocking violations. Everything else (unsupported
+  // claims, low-confidence contradictions) is advisory: the dominant
+  // false-positive source, surfaced with less visual weight. /try keeps
+  // no pass/fail gate (intentional — advisory tool), only display tiering.
+  function isCriticalFlag(f) {
+    return f && f.verdict === 'contradicted' &&
+      (f.confidence === 'high' || f.confidence === 'medium');
+  }
+
   function ccStrip(data) {
     if (data.cross_check_skipped) {
       return '<div class="cc-strip skipped">' + esc(t('ccUnavailable')) + '</div>';
     }
-    var n = (data.flags || []).length;
-    if (n === 0) {
+    var flags = data.flags || [];
+    if (flags.length === 0) {
       return '<div class="cc-strip clean">' + esc(t('ccClean')) + '</div>';
     }
-    return '<div class="cc-strip flagged">' + esc(t('ccFlagged', n)) + '</div>';
+    var critical = flags.filter(isCriticalFlag).length;
+    if (critical === 0) {
+      return '<div class="cc-strip advisory">' + esc(t('ccAdvisory', flags.length)) + '</div>';
+    }
+    return '<div class="cc-strip flagged">' + esc(t('ccFlagged', critical)) +
+      (flags.length > critical ? esc(t('ccAdvisorySuffix', flags.length - critical)) : '') +
+      '</div>';
   }
 
   function flagsDetails(flags) {
     if (!flags || flags.length === 0) return '';
+    // Hard flags first; advisory entries render dimmed with a tag.
+    var sorted = flags.slice().sort(function (a, b) {
+      return (isCriticalFlag(b) ? 1 : 0) - (isCriticalFlag(a) ? 1 : 0);
+    });
     return '<details class="flags-details"><summary>' + esc(t('flagsSummary', flags.length)) + '</summary><ul>' +
-      flags.map(function (f) {
-        return '<li>' +
-          '<span class="flag-verdict">' + esc(f.verdict) + '</span>' +
+      sorted.map(function (f) {
+        var advisory = !isCriticalFlag(f);
+        return '<li' + (advisory ? ' class="flag-advisory"' : '') + '>' +
+          '<span class="flag-verdict">' + esc(f.verdict) +
+          (advisory ? ' &middot; ' + esc(t('flagAdvisoryTag')) : '') + '</span>' +
           '<span class="flag-claim">&ldquo;' + esc(f.claim_text) + '&rdquo;</span>' +
           '<span class="flag-reason">' + esc(f.reason) +
           ' <span class="flag-confidence">(' + esc(f.kind) + ' &middot; confidence: ' + esc(f.confidence) + ')</span></span>' +

@@ -182,6 +182,22 @@ touching this repo.
 5. Run `npm run test:publish` — the formatter/threading/OAuth unit tests
    must pass.
 
+**Before your first real post, use "Test connection"** (owner panel, next to
+the token field). It sends `{verify:true}` to `/api/publish`, which makes a
+signed **GET /2/users/me** (no tweet posted) and reports the authenticated
+`@handle` so you can confirm *which account* would post, plus which setup
+mistake to fix if the keys are wrong:
+
+- `401` → keys/tokens rejected (re-check all four; regenerate the access token
+  if you changed app permissions after creating it).
+- `403` → authenticated but forbidden (app lacks Read+Write, or the account
+  has no X API credit).
+- read-only token → flagged explicitly (`x-access-level: read`).
+
+Note: X does **not** guarantee the `x-access-level` header on the v2 endpoint.
+When it's absent, verify reports "keys valid, write not confirmed" rather than
+over-promising — a truly conclusive write check is only possible by posting.
+
 ### Publish runbook
 
 - **Stop all publishing now**: set `PUBLISH_ENABLED="false"` → 503.
@@ -312,6 +328,18 @@ intentional (free-string field, not load-bearing).
 - **Publish: partial threads aren't rolled back**: an X thread that fails
   midway leaves the already-posted tweets live (the response reports how far
   it got); reconcile by hand.
+- **Publish: 503-only retry, bounded double-post risk**: a tweet that fails
+  with HTTP `503` is retried once (up to `MAX_X_RETRIES` per request, 1.5s
+  apart) so a brief X hiccup doesn't kill a thread. `429`/`500`/`502`/timeouts
+  are **not** retried (rate-limit windows are minutes, and those outcomes are
+  ambiguous — a blind retry could double-post). Residual risk: `503` *should*
+  mean "not processed", but if X returned it after the write committed, the
+  retry would post one duplicate. Rare and HTTP-noncompliant; accepted.
+- **Verify is unmetered**: `{verify:true}` (Test connection) is read-only
+  (`GET /2/users/me`, no post), so it skips the daily rate-limit and
+  idempotency gates. Owner-token-gated, so the token remains the only gate on
+  it; a leaked token could call users/me freely (cheap, but counts toward the
+  account's X API usage).
 - **Publish: idempotency is best-effort**: an identical publish (same
   format + language + channels + content) within `IDEM_TTL_S` (10 min) is
   deduped via a content-hash key in `TRY_KV` → `409 code=duplicate`, which

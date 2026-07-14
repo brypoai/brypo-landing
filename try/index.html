@@ -648,6 +648,24 @@ body.tips-dismissed mark.flagged:hover::after { display: none; }
 .publish-hint { font-size: 12px; color: var(--muted-hi); min-height: 1em; }
 .publish-hint.ok { color: var(--accent); }
 .publish-hint.err { color: #d66; }
+.verify-row { display: flex; align-items: flex-start; gap: 0.7rem; flex-wrap: wrap; }
+.verify-btn {
+  padding: 0.45rem 0.9rem;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--fg-soft);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.verify-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.verify-btn:disabled { opacity: 0.55; cursor: default; }
+.verify-result { font-size: 12px; color: var(--fg-soft); align-self: center; max-width: 46ch; }
+.verify-result.ok { color: var(--accent); }
+.verify-result.err { color: #d66; }
 .card-publish {
   margin-top: 0.7rem;
   padding: 0.5rem 1rem;
@@ -840,6 +858,13 @@ footer .copyright { text-transform: uppercase; }
         <label><input type="checkbox" id="ch-x" checked> <span data-i18n="channelX">X (Twitter)</span></label>
         <label><input type="checkbox" id="ch-webhook"> <span data-i18n="channelWebhook">Webhook (note / LinkedIn / TikTok / YouTube via Zapier&nbsp;/&nbsp;Make)</span></label>
       </fieldset>
+      <!-- Verifies credentials WITHOUT posting (users/me + webhook presence):
+           catches wrong keys / read-only tokens / the wrong @account before
+           anything goes live. -->
+      <div class="verify-row">
+        <button type="button" class="verify-btn" id="verify-btn" data-i18n="verifyBtn">Test connection</button>
+        <span class="verify-result" id="verify-result" role="status" aria-live="polite"></span>
+      </div>
       <p class="publish-hint" id="publish-hint"></p>
     </div>
   </details>
@@ -963,6 +988,13 @@ footer .copyright { text-transform: uppercase; }
       publishSummary: 'Auto-publish (owner)',
       publishNote: 'Owner-only. Paste your publish token to turn on a “Publish” button on each card. Posts go live immediately — no review step.',
       publishTokenLabel: 'Publish token',
+      verifyBtn: 'Test connection',
+      verifyingBtn: 'Testing…',
+      verifyOkX: function (handle) { return '✓ X: will post as @' + handle; },
+      verifyAuthOkX: function (handle) { return '✓ X: keys valid, will post as @' + handle + ' (write not confirmable without a live post)'; },
+      verifyWebhookSet: '✓ Webhook: configured (not called)',
+      verifyWebhookUnset: '– Webhook: not configured',
+      verifyNetErr: 'Network error while testing the connection.',
       channels: 'Channels',
       channelX: 'X (Twitter)',
       channelWebhook: 'Webhook (note / LinkedIn / TikTok / YouTube via Zapier / Make)',
@@ -1050,6 +1082,13 @@ footer .copyright { text-transform: uppercase; }
       publishSummary: '自動投稿（オーナー用）',
       publishNote: 'オーナー専用。投稿トークンを貼ると各カードに「投稿する」ボタンが表示されます。投稿は即座に公開されます — レビュー工程はありません。',
       publishTokenLabel: '投稿トークン',
+      verifyBtn: '接続テスト',
+      verifyingBtn: '確認中…',
+      verifyOkX: function (handle) { return '✓ X: @' + handle + ' として投稿できます'; },
+      verifyAuthOkX: function (handle) { return '✓ X: キーは有効・@' + handle + ' として投稿予定（書き込み権限は実投稿でのみ確定）'; },
+      verifyWebhookSet: '✓ Webhook: 設定済み（テストでは呼び出しません）',
+      verifyWebhookUnset: '– Webhook: 未設定',
+      verifyNetErr: '接続テスト中に通信エラーが発生しました。',
       channels: 'チャンネル',
       channelX: 'X (Twitter)',
       channelWebhook: 'Webhook（note / LinkedIn / TikTok / YouTube を Zapier / Make 経由で）',
@@ -1152,6 +1191,8 @@ footer .copyright { text-transform: uppercase; }
     srStatus: document.getElementById('sr-status'),
     publishToken: document.getElementById('publish-token'),
     publishHint: document.getElementById('publish-hint'),
+    verifyBtn: document.getElementById('verify-btn'),
+    verifyResult: document.getElementById('verify-result'),
     chX: document.getElementById('ch-x'),
     chWebhook: document.getElementById('ch-webhook')
   };
@@ -1784,6 +1825,61 @@ footer .copyright { text-transform: uppercase; }
     el.textContent = msg;
     el.className = 'card-publish-status' + (cls ? ' ' + cls : '');
   }
+
+  // Test connection: verifies channel credentials WITHOUT posting. Uses the
+  // same owner token; the server checks X via users/me and reports which
+  // @handle would post (webhook is presence-only — never called).
+  function runVerify() {
+    var token = els.publishToken.value.trim();
+    if (token.length === 0) { setPublishHint(t('needToken'), 'err'); return; }
+    setPublishHint('', '');
+    els.verifyBtn.disabled = true;
+    els.verifyBtn.textContent = t('verifyingBtn');
+    setVerifyResult(t('verifyingBtn'), '');
+
+    fetch('/api/publish', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-publish-token': token },
+      body: JSON.stringify({ verify: true })
+    }).then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (res.status === 401) { setVerifyResult(t('rejectedToken'), 'err'); return; }
+        if (res.status === 503) { setVerifyResult(t('publishDisabled'), 'err'); return; }
+        if (!data || !Array.isArray(data.results)) {
+          setVerifyResult((data && data.error) || t('verifyNetErr'), 'err');
+          return;
+        }
+        var allOk = true;
+        var parts = data.results.map(function (r) {
+          if (r.channel === 'x') {
+            if (r.ok) {
+              // write:'yes' → confident; 'unknown' → keys valid but write unconfirmed.
+              return r.write === 'yes'
+                ? t('verifyOkX', r.handle || '?')
+                : t('verifyAuthOkX', r.handle || '?');
+            }
+            allOk = false;
+            return '✗ X: ' + (r.detail || 'failed');
+          }
+          // Webhook is optional — being unset is informational, not a failure.
+          return r.ok ? t('verifyWebhookSet') : t('verifyWebhookUnset');
+        });
+        setVerifyResult(parts.join('  •  '), allOk ? 'ok' : 'err');
+      });
+    }).catch(function () {
+      setVerifyResult(t('verifyNetErr'), 'err');
+    }).finally(function () {
+      els.verifyBtn.disabled = false;
+      els.verifyBtn.textContent = t('verifyBtn');
+    });
+  }
+
+  function setVerifyResult(msg, cls) {
+    els.verifyResult.textContent = msg;
+    els.verifyResult.className = 'verify-result' + (cls ? ' ' + cls : '');
+  }
+
+  els.verifyBtn.addEventListener('click', runVerify);
 
   // Publish (delegated)
   els.results.addEventListener('click', function (e) {

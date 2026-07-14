@@ -413,6 +413,16 @@ t("reproduces the RFC 5849 example signature", async () => {
   assert(h3 !== h1, "different nonce must change signature");
 });
 
+t("GET signing (users/me verify) differs from POST and stays deterministic", async () => {
+  const creds = { consumerKey: "ck", consumerSecret: "cs", accessToken: "at", accessTokenSecret: "ats" };
+  const get1 = await buildOAuth1Header("GET", "https://api.twitter.com/2/users/me", creds, "n1", 1710000000);
+  const get2 = await buildOAuth1Header("GET", "https://api.twitter.com/2/users/me", creds, "n1", 1710000000);
+  const post = await buildOAuth1Header("POST", "https://api.twitter.com/2/users/me", creds, "n1", 1710000000);
+  eq(get1, get2, "GET signing deterministic");
+  assert(get1 !== post, "HTTP method is part of the signature base string");
+  assert(get1.startsWith("OAuth "), "header shape");
+});
+
 // ---- summary -----------------------------------------------------------------
 
 process.on("beforeExit", () => {

@@ -113,6 +113,97 @@ async function sha256Hex(s: string): Promise<string> {
   return hex(new Uint8Array(digest));
 }
 
+// Retry only on 503 (service temporarily unavailable) — a short retry can
+// genuinely clear it. 429 is excluded: X post rate-limit windows are minutes,
+// so a ~1.5s retry is futile and just adds latency. 500/502/network-timeouts
+// (status 0) are excluded because the outcome is ambiguous — the tweet may
+// have been created and a blind retry would double-post.
+//   Residual risk: HTTP 503 *should* mean "not processed", but if X's edge
+//   returned 503 after the write committed, one retry would post a duplicate.
+//   That path is rare and HTTP-noncompliant; accepted as a bounded tradeoff
+//   (see TRY_TOOL_README.md "Known limitations").
+const RETRYABLE_X_STATUSES = new Set([503]);
+const MAX_X_RETRIES = 3; // per request; bounds latency + subrequest budget
+const X_RETRY_DELAY_MS = 1_500;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Verify the X credentials WITHOUT posting: OAuth1-signed GET /2/users/me.
+ * Returns the authenticated handle (so the owner sees which account a
+ * Publish would post as) and, when X exposes it, the token's access level —
+ * which catches the classic "token generated before Read+Write" mistake.
+ */
+async function verifyXCredentials(
+  creds: OAuth1Creds,
+): Promise<ChannelResult & { handle?: string; write?: "yes" | "unknown" }> {
+  const url = "https://api.twitter.com/2/users/me";
+  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
+  const timestamp = Math.floor(Date.now() / 1000);
+  const auth = await buildOAuth1Header("GET", url, creds, nonce, timestamp);
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: auth },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch {
+    return { channel: "x", ok: false, detail: "network error or timeout reaching the X API" };
+  }
+  let data: any = null;
+  try {
+    data = await res.json();
+  } catch {
+    /* non-JSON body — handled below */
+  }
+  if (!res.ok) {
+    const upstream =
+      (data && (data.title || data.detail || data.error)) || `X API returned ${res.status}`;
+    // Map the common setup failures to actionable hints.
+    const hint =
+      res.status === 401
+        ? " — keys/tokens rejected: re-check all four values (and regenerate the access token if app permissions changed after it was created)"
+        : res.status === 403
+          ? " — authenticated but forbidden: app may lack Read+Write, or the account has no API credit"
+          : "";
+    return {
+      channel: "x",
+      ok: false,
+      detail: `${String(upstream).slice(0, 160)}${hint}`,
+    };
+  }
+  const handle = typeof data?.data?.username === "string" ? data.data.username : undefined;
+  // x-access-level is a v1.1-era header that X *usually* still sends on OAuth1
+  // requests, but it is NOT guaranteed on the v2 users/me endpoint. When it's
+  // "read" we can catch the classic read-only-token mistake loudly; when it's
+  // absent we deliberately DON'T claim posting works (a read-only token also
+  // returns 200 here) — there's no non-destructive way to confirm write scope,
+  // so we report "keys valid, write not confirmed" instead of over-promising.
+  const accessLevel = res.headers.get("x-access-level") ?? "";
+  if (accessLevel === "read") {
+    return {
+      channel: "x",
+      ok: false,
+      handle,
+      detail: `authenticated as @${handle ?? "?"} but the access token is READ-ONLY — set the app to Read and Write, then regenerate the access token`,
+    };
+  }
+  const write: "yes" | "unknown" = accessLevel.includes("write") ? "yes" : "unknown";
+  return {
+    channel: "x",
+    ok: true,
+    handle,
+    write,
+    detail:
+      write === "yes"
+        ? `authenticated as @${handle ?? "?"} with write access`
+        : `authenticated as @${handle ?? "?"} — keys valid (write permission not confirmed without a live post)`,
+  };
+}
+
 /** Post one tweet, optionally as a reply, returning its id. */
 async function postTweet(
   creds: OAuth1Creds,
@@ -190,8 +281,17 @@ async function publishToX(
   let replyTo: string | null = null;
   let firstId: string | null = null;
   let posted = 0;
+  let retriesUsed = 0;
   for (const text of tweets) {
-    const r = await postTweet(creds, text, replyTo);
+    let r = await postTweet(creds, text, replyTo);
+    // Transient-error retry so a long thread isn't killed by one hiccup.
+    // See RETRYABLE_X_STATUSES for which statuses qualify and why. Capped per
+    // request to bound latency and the Workers subrequest budget.
+    if (!r.ok && RETRYABLE_X_STATUSES.has(r.status) && retriesUsed < MAX_X_RETRIES) {
+      retriesUsed += 1;
+      await sleep(X_RETRY_DELAY_MS);
+      r = await postTweet(creds, text, replyTo);
+    }
     if (!r.ok) {
       // Partial thread: report how far we got so the owner can reconcile.
       const base =
@@ -295,6 +395,37 @@ export async function onRequestPost(context: PagesContext): Promise<Response> {
   const expected = env.PUBLISH_TOKEN ?? "";
   if (expected.length === 0 || !timingSafeEqual(provided, expected)) {
     return finish(errorResponse(401, "unauthorized", "Invalid or missing publish token."), []);
+  }
+
+  // 3b. Verify mode: check the channel credentials WITHOUT posting anything.
+  // Read-only, so it skips the rate-limit and idempotency gates. The X check
+  // is a live users/me call (also reveals which @handle would post); the
+  // webhook is only checked for presence — calling it would fire the owner's
+  // automation with a bogus payload.
+  if (body?.verify === true) {
+    const results: Array<Record<string, unknown>> = [];
+    const creds: OAuth1Creds = {
+      consumerKey: env.X_API_KEY ?? "",
+      consumerSecret: env.X_API_SECRET ?? "",
+      accessToken: env.X_ACCESS_TOKEN ?? "",
+      accessTokenSecret: env.X_ACCESS_TOKEN_SECRET ?? "",
+    };
+    if (!creds.consumerKey || !creds.consumerSecret || !creds.accessToken || !creds.accessTokenSecret) {
+      results.push({ channel: "x", ok: false, detail: "X credentials not configured" });
+    } else {
+      results.push(await verifyXCredentials(creds));
+    }
+    results.push({
+      channel: "webhook",
+      ok: Boolean(env.PUBLISH_WEBHOOK_URL),
+      detail: env.PUBLISH_WEBHOOK_URL
+        ? "PUBLISH_WEBHOOK_URL is configured (not called during verify)"
+        : "PUBLISH_WEBHOOK_URL not configured",
+    });
+    // Handle/access level go to the response for the owner, never the logs.
+    return finish(json({ verify: true, results }, 200), ["verify"], {
+      verify_x_ok: results[0]?.ok === true,
+    });
   }
 
   // 4. Validate format + content.

@@ -245,11 +245,11 @@ brypo docs/18 §3 C-5). Audited at brypo `c7573c2` ⇄ landing `0898df3`.
    critical first and dims advisory, inline `<mark>`s are lighter for
    advisory. Still no gate.
 
-### Reverse drift — the APP should adopt landing (recorded, not fixed here)
+### Reverse drift — the APP should adopt landing
 
-Landing's cross-check prompt is ahead of the app's `L2_SYSTEM_PROMPT` on
-two points; candidate back-ports **in the brypo repo** (prompts change →
-dev deploy + dogfood check):
+**Status: back-ported in brypo #14 (2026-07-14)** — both points below are
+now in the app's `L2_SYSTEM_PROMPT` (format-render deployed to dev;
+dogfood verdict check recommended on next generate). Kept for the record:
 
 1. Landing flags *invented specifics inside forward-looking sentences*
    (a made-up "launching August 3" is unsupported even in future tense);

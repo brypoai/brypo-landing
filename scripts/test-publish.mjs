@@ -34,6 +34,7 @@ import {
   crossCheckLanguageDirective,
   publishUsageKey,
 } from "../functions/api/_lib.ts";
+import { buildMetricsLogLine } from "../functions/api/_metrics.ts";
 
 // ---- tiny test runner --------------------------------------------------------
 
@@ -421,6 +422,74 @@ t("GET signing (users/me verify) differs from POST and stays deterministic", asy
   eq(get1, get2, "GET signing deterministic");
   assert(get1 !== post, "HTTP method is part of the signature base string");
   assert(get1.startsWith("OAuth "), "header shape");
+});
+
+console.log("\nunit: buildOAuth1Header query params (metrics public_metrics)");
+t("query params enter the signature base string but not the header", async () => {
+  const creds = { consumerKey: "ck", consumerSecret: "cs", accessToken: "at", accessTokenSecret: "ats" };
+  const url = "https://api.twitter.com/2/users/me";
+  const plain = await buildOAuth1Header("GET", url, creds, "n1", 1710000000);
+  const withQuery = await buildOAuth1Header("GET", url, creds, "n1", 1710000000, {
+    "user.fields": "public_metrics",
+  });
+  // Folding a query param into the base string must change the signature...
+  assert(plain !== withQuery, "query param must alter the signature");
+  // ...but the query param itself must NOT appear in the Authorization header
+  // (it lives on the fetch URL). Only oauth_* params are in the header.
+  assert(!/user\.fields|public_metrics/.test(withQuery), "query param leaked into header");
+  assert(withQuery.startsWith("OAuth "), "header shape");
+  // Deterministic and empty-object is identical to omitting the arg (regression).
+  const again = await buildOAuth1Header("GET", url, creds, "n1", 1710000000, {
+    "user.fields": "public_metrics",
+  });
+  eq(withQuery, again, "query signing deterministic");
+  const emptyObj = await buildOAuth1Header("GET", url, creds, "n1", 1710000000, {});
+  eq(emptyObj, plain, "empty query object == no query arg (back-compat)");
+});
+
+console.log("\nunit: buildMetricsLogLine (docs/METRICS_LOG.md row)");
+t("formats followers/handle/try and a manual waitlist cell", () => {
+  const line = buildMetricsLogLine({
+    date: "2026-07-15",
+    x: { followers: 42, handle: "kokibuilds" },
+    try: { publishCountToday: 3, spendUsdToday: 0.1234 },
+    waitlist: null,
+  });
+  eq(
+    line,
+    "| 2026-07-15 | 42 (@kokibuilds) | — (Tally 手記入) | publish 3 / $0.1234 |  |",
+    "log line",
+  );
+});
+t("null followers renders n/a with the reason and never crashes", () => {
+  const line = buildMetricsLogLine(
+    {
+      date: "2026-07-15",
+      x: { followers: null, handle: null, error: "X_* credentials not set" },
+      try: { publishCountToday: 0, spendUsdToday: 0 },
+      waitlist: null,
+    },
+    "first run",
+  );
+  assert(line.includes("n/a (X_* credentials not set)"), "followers reason shown");
+  assert(line.includes("— (Tally 手記入)"), "waitlist manual cell");
+  assert(line.includes("publish 0 / $0.0000"), "try cell zeros");
+  assert(line.endsWith("first run |"), "note in last column");
+});
+t("a pipe in the note cannot break the table", () => {
+  const line = buildMetricsLogLine(
+    {
+      date: "2026-07-15",
+      x: { followers: 1, handle: "h" },
+      try: { publishCountToday: 0, spendUsdToday: 0 },
+      waitlist: null,
+    },
+    "a|b",
+  );
+  // The raw pipe is escaped as \| so a Markdown renderer keeps it inside the
+  // note cell instead of starting a new column.
+  assert(line.includes("a\\|b"), "pipe escaped in note");
+  assert(!/[^\\]\|b/.test(line), "no unescaped pipe before the note text");
 });
 
 // ---- summary -----------------------------------------------------------------

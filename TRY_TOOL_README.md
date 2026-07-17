@@ -210,6 +210,31 @@ over-promising — a truly conclusive write check is only possible by posting.
   response reports `posted N/total` and the first tweet's URL so you can
   reconcile by hand — the endpoint does not auto-delete a partial thread.
 
+## Metrics snapshot (`/api/metrics`, D-1)
+
+Owner-gated, read-only distribution KPIs for Go/No-Go #1 (docs/18 §3 Track D,
+§9.1). `GET /api/metrics` with header `X-Publish-Token: <PUBLISH_TOKEN>` (same
+token as publish; no new secret) returns:
+
+- **X followers**: `followers_count` via the same `GET /2/users/me` verify
+  path, plus `user.fields=public_metrics` (uses the existing `X_*` creds).
+- **/try usage**: today's `publish:YYYY-MM-DD` count and `usage:YYYY-MM-DD`
+  USD spend from `TRY_KV`.
+- **waitlist**: always `null` — the LP waitlist is a Tally.so embed (form
+  `dWQlbq`) with **no repo-side source**, so fill it by hand from the Tally
+  dashboard (docs/18 §9.2). Recording the gap is deliberate.
+
+Run it weekly and append the printed row to brypo `docs/METRICS_LOG.md`:
+
+```
+PUBLISH_TOKEN=… node scripts/metrics-snapshot.mjs [--base https://brypo.com]
+```
+
+The token comes from `$PUBLISH_TOKEN` (never argv); the full JSON goes to
+stderr, the single Markdown row to stdout. Unlike `/api/publish`, this
+endpoint has no daily cap or `PUBLISH_ENABLED` gate (read-only); the constant-
+time `PUBLISH_TOKEN` check is the only guard.
+
 ## Runbook
 
 - **Launch day**: raise `DAILY_BUDGET_USD` to `25` in Pages → Settings →

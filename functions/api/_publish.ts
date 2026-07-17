@@ -442,8 +442,12 @@ function base64(bytes: ArrayBuffer): string {
 
 /**
  * Build the `Authorization: OAuth …` header for a request. The X v2 tweet
- * endpoint carries its payload as a JSON body, so no body/query params enter
- * the signature base string (only the oauth_* params do). `nonce` and
+ * endpoint carries its payload as a JSON body, so no body params enter the
+ * signature base string. When a request DOES carry query parameters (e.g. a
+ * GET `?user.fields=public_metrics`), RFC 5849 requires them in the base
+ * string too — pass them via `queryParams` so they are merged with the
+ * oauth_* params before signing. They are NOT added to the returned header
+ * (which stays oauth_* only); they must remain on the fetch URL. `nonce` and
  * `timestamp` are injected by the caller (kept out of here so the signer is
  * deterministic and unit-testable).
  */
@@ -453,6 +457,7 @@ export async function buildOAuth1Header(
   creds: OAuth1Creds,
   nonce: string,
   timestamp: number,
+  queryParams: Record<string, string> = {},
 ): Promise<string> {
   const oauthParams: Record<string, string> = {
     oauth_consumer_key: creds.consumerKey,
@@ -463,8 +468,10 @@ export async function buildOAuth1Header(
     oauth_version: "1.0",
   };
 
-  const paramString = Object.keys(oauthParams)
-    .map((k) => [percentEncode(k), percentEncode(oauthParams[k])])
+  // Base string params = oauth_* ∪ query params, percent-encoded then sorted
+  // by encoded key (RFC 5849 §3.4.1.3). Body/JSON payloads still stay out.
+  const paramString = Object.entries({ ...oauthParams, ...queryParams })
+    .map(([k, v]) => [percentEncode(k), percentEncode(v)])
     .sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
     .map(([k, v]) => `${k}=${v}`)
     .join("&");

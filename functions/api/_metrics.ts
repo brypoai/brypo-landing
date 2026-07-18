@@ -22,11 +22,12 @@ export interface MetricsSnapshot {
     spendUsdToday: number;
   };
   /**
-   * Always null: the LP waitlist is a Tally.so embed (form dWQlbq) with no
-   * repo-side data source (docs/18 §9.2). Kept in the shape so the gap is
-   * explicit rather than silently missing.
+   * Waitlist signup count, fetched from the Tally API (form dWQlbq) when
+   * TALLY_API_KEY is configured. null when the key is unset or the Tally
+   * fetch failed — the log line then renders a fill-by-hand marker so the
+   * gap stays explicit rather than silently missing (docs/18 §9.2).
    */
-  waitlist: null;
+  waitlist: number | null;
 }
 
 /** Cell used for a value that has no automatic source (filled by hand). */
@@ -40,7 +41,8 @@ function cell(v: string): string {
 /**
  * Render one METRICS_LOG.md table row from a snapshot. Column order matches
  * docs/METRICS_LOG.md: 日付 | X followers | waitlist | try 利用 | 備考.
- * The waitlist column is always the manual marker (see MetricsSnapshot).
+ * The waitlist column is the Tally count when available, otherwise the
+ * manual marker (see MetricsSnapshot).
  */
 export function buildMetricsLogLine(snap: MetricsSnapshot, note = ""): string {
   const followers =
@@ -51,10 +53,12 @@ export function buildMetricsLogLine(snap: MetricsSnapshot, note = ""): string {
       : String(snap.x.followers);
   const handle = snap.x.handle ? ` (@${snap.x.handle})` : "";
   const tryCell = `publish ${snap.try.publishCountToday} / $${snap.try.spendUsdToday.toFixed(4)}`;
+  const waitlistCell =
+    snap.waitlist === null ? WAITLIST_MANUAL_CELL : String(snap.waitlist);
   const cells = [
     snap.date,
     `${followers}${handle}`,
-    WAITLIST_MANUAL_CELL,
+    waitlistCell,
     tryCell,
     note,
   ].map(cell);

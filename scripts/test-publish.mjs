@@ -476,6 +476,28 @@ t("null followers renders n/a with the reason and never crashes", () => {
   assert(line.includes("publish 0 / $0.0000"), "try cell zeros");
   assert(line.endsWith("first run |"), "note in last column");
 });
+t("a numeric waitlist (Tally API) renders the count instead of the manual cell", () => {
+  const line = buildMetricsLogLine({
+    date: "2026-07-17",
+    x: { followers: 42, handle: "kokibuilds" },
+    try: { publishCountToday: 1, spendUsdToday: 0.05 },
+    waitlist: 17,
+  });
+  eq(
+    line,
+    "| 2026-07-17 | 42 (@kokibuilds) | 17 | publish 1 / $0.0500 |  |",
+    "waitlist count in cell",
+  );
+  // Zero is a real count, not a missing value — must not fall back to manual.
+  const zero = buildMetricsLogLine({
+    date: "2026-07-17",
+    x: { followers: 42, handle: "kokibuilds" },
+    try: { publishCountToday: 0, spendUsdToday: 0 },
+    waitlist: 0,
+  });
+  assert(zero.includes("| 0 |"), "waitlist 0 renders as 0");
+  assert(!zero.includes("手記入"), "waitlist 0 must not render the manual cell");
+});
 t("a pipe in the note cannot break the table", () => {
   const line = buildMetricsLogLine(
     {

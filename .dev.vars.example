@@ -32,3 +32,10 @@ PUBLISH_WEBHOOK_URL=
 # Max publishes per UTC day (counter shares the TRY_KV namespace). A backstop
 # that bounds the damage if PUBLISH_TOKEN leaks. Optional; defaults to 50.
 PUBLISH_DAILY_LIMIT=50
+
+# ---- /api/metrics (owner-only KPI snapshot) ----------------------------------
+# Tally API key (Tally → Settings → API keys) for the waitlist signup count.
+# Optional: unset → the waitlist column stays a fill-by-hand cell.
+TALLY_API_KEY=
+# Waitlist form id; optional, defaults to the LP embed (dWQlbq).
+TALLY_FORM_ID=

@@ -220,11 +220,18 @@ token as publish; no new secret) returns:
   path, plus `user.fields=public_metrics` (uses the existing `X_*` creds).
 - **/try usage**: today's `publish:YYYY-MM-DD` count and `usage:YYYY-MM-DD`
   USD spend from `TRY_KV`.
-- **waitlist**: always `null` — the LP waitlist is a Tally.so embed (form
-  `dWQlbq`) with **no repo-side source**, so fill it by hand from the Tally
-  dashboard (docs/18 §9.2). Recording the gap is deliberate.
+- **waitlist**: signup count via the **Tally API** when `TALLY_API_KEY` is set
+  (Tally → Settings → API keys; `GET api.tally.so/forms/{id}/submissions` →
+  `totalNumberOfSubmissionsPerFilter.all`; form id defaults to the LP embed
+  `dWQlbq`, override with `TALLY_FORM_ID`). Key unset or fetch failed →
+  `null`, and the log row falls back to a fill-by-hand cell (docs/18 §9.2).
+  One-time owner setup: create a Tally API key and add `TALLY_API_KEY` in
+  Cloudflare Pages → Settings → Variables (Production).
 
-Run it weekly and append the printed row to brypo `docs/METRICS_LOG.md`:
+**Recommended: fully unattended.** The brypo repo's weekly Actions workflow
+(`.github/workflows/metrics-snapshot.yml`) calls this endpoint every Monday
+09:00 JST and opens a PR appending the row to `docs/METRICS_LOG.md` — with
+`TALLY_API_KEY` set, no manual step remains. Manual fallback:
 
 ```
 PUBLISH_TOKEN=… node scripts/metrics-snapshot.mjs [--base https://brypo.com]

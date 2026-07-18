@@ -38,3 +38,9 @@ jobs:
 
       - name: Unit tests (publish)
         run: node scripts/test-publish.mjs
+
+      # /try prompts は app（brypo format-render SYSTEM_PROMPTS）の手動フォーク。
+      # app 側との drift を検知する（CI では fingerprint 保証・cross-repo persona
+      # 照合は ../brypo がある dev/local でのみ実行）。
+      - name: Prompt drift guard
+        run: node scripts/prompt-drift-check.mjs

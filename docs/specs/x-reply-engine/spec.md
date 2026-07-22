@@ -1,13 +1,14 @@
 # spec: x-reply-engine（@kokibuilds 成長のためのリプライ起草・承認・送信）
 
-- 版: v0.1（2026-07-22・設計のみ。**送信の有効化・課金は 👤 判断後**）
+- 版: v0.2（2026-07-22・設計のみ。**送信は auto**〔👤 決定「基本承認なし」〕。有効化・読取課金は 👤 判断後。X Premium 加入済み）
 - 戦略の正本: dev-env `docs/dev-env/x-growth-strategy.md`
 - 前提: `TRY_TOOL_README.md`（`/api/publish` のアーキテクチャ・OAuth・KV・レート制御が正）
 
 ## 0. 目的
 
 Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。その最大ドライバである
-**リプライ**を「AI 起草 → 👤 承認 → 決定的スクリプトが送信」の 3 層で回す。いいね・フォローは
+**リプライ**を「AI 起草 → 決定的ガードレール → auto 送信」の 3 層で回す（逐次の人手承認は無し＝
+2026-07-22 👤 決定。安全弁は kill switch + rate cap + 類似度ガード）。いいね・フォローは
 2026-04-20 の X 仕様変更で **Enterprise 専用（~$42k/月）** となったため本スコープに含めない
 （👤 が手動運用）。
 
@@ -16,13 +17,14 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 ### やること
 - **reply 対象の取得**（読取）: ICP（build-in-public founder）の直近投稿を検索して候補化。
 - **リプ起草**（AI）: 候補ツイートの文脈を読み、証拠ベースの短い付加価値リプを起草。
-- **承認キュー**: 起草結果を 👤 が 1 件ずつ ✅/✗。
-- **送信**: 承認済みリプのみ `POST /2/tweets`（`reply.in_reply_to_tweet_id`）で送信。
+- **ガードレール（決定的）**: rate cap・kill switch・類似度/リンク/NG 語チェックを通過した下書きのみ送信対象に。
+- **auto 送信**: 通過分を `POST /2/tweets`（`reply.in_reply_to_tweet_id`）で送信（人手承認なし）。
+- **事後ダイジェスト**（任意・初期のみ）: 送ったリプ一覧を owner が読める形で残し、prompt 微調整に使う。
 - **rate guard + 冪等ガード**: 日次上限・同一ツイートへの二重リプ防止。
 
 ### やらないこと（非スコープ）
 - いいね / フォロー / 引用ポストの API 操作（Enterprise 専用・§戦略 doc §1）。
-- 送信の完全 auto 化（当面 **human_approval 固定**。mode を緩めない）。
+- 逐次の人手承認キュー（2026-07-22 👤 決定で不採用。安全弁はガードレール層）。
 - 自動 DM。
 - 新規テーブル・永続 DB（KV のみ。`/try` と同じく状態は最小）。
 
@@ -51,20 +53,24 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 ### `POST /api/x-reply/draft`（起草・AI）
 - 入力: `{ token, candidates: [...] }`。
 - 動作: 候補ごとに reply prompt（§4）で 1 リプ起草。**起草は読取専用の思想**（secrets 非接触の
-  純関数＋LLM 呼び出しのみ、送信 creds に触れない）。
-- 出力: `{ drafts: [{ inReplyToId, authorHandle, sourceUrl, draftText, rationale }] }`。
-- 承認キューへ: KV `x-reply:queue:<id>` に `pending` で put（TTL 72h）。
+  純関数＋LLM 呼び出しのみ、送信 creds に触れない）。**ガードレール（§6）を通過した下書きのみ**
+  送信対象キュー `x-reply:queue:<id>` に put（TTL 72h）。不通過は理由付きで破棄（ダイジェストに記録）。
+- 出力: `{ drafts: [{ inReplyToId, authorHandle, sourceUrl, draftText, rationale, passed }] }`。
 
-### `POST /api/x-reply/send`（送信・承認済みのみ）
-- 入力: `{ token, id }`（承認された 1 件）。
+### `POST /api/x-reply/send`（auto 送信・人手承認なし）
+- 入力: `{ token, id }`（オーケストレータが draft ステップ後に通過分を渡す。人の介在なし）。
+- **kill switch**: `X_REPLY_ENABLED !== "true"` なら 503（既存 `PUBLISH_ENABLED` と同型）。停止は env 1 つ。
 - 動作: KV から draft を取り出し、`postTweet(creds, draftText, inReplyToId)` で送信。
   - **冪等**: `idempotencyPayload`（handle + inReplyToId + 正規化本文）で二重送信を弾く。
   - **rate guard**: `x-reply:count:YYYY-MM-DD` を increment。soft cap（既定 **20 リプ/日**・
     投稿含む合算はアカウント上限 200/日 を十分下回る）超過で 429。
 - 出力: `{ ok, tweetId }`。content-free ログのみ（`{action:"x-reply", status, ms}`）。
 
-> 承認 UI は当面 `/try` と独立の owner-only 最小画面 or 既存 publish token を使った手動 POST で可。
-> 将来 GitHub Issue チェックボックス承認へ寄せる余地（本 spec では最小に留める）。
+### オーケストレーション
+- discover → draft（+ガードレール）→ send を 1 本で回すのは Cloudflare Cron Trigger か
+  owner token を持つ最小ワーカー（`/try` の予算・kill switch を共有）。人手承認は挟まない。
+- **事後ダイジェスト**: 送信済み・破棄を KV `x-reply:digest:YYYY-MM-DD` に content 付きで残し、
+  owner-only エンドポイント or 既存 `/api/metrics` 拡張で読む（初期の prompt 微調整用・任意）。
 
 ## 4. リプ起草 prompt（要点）
 
@@ -77,15 +83,20 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 
 ## 5. env / secrets（キー名のみ・値は Cloudflare）
 
-- 追加なし想定: 送信は既存 `X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET` を流用。
+- 送信 creds は既存 `X_API_KEY / X_API_SECRET / X_ACCESS_TOKEN / X_ACCESS_TOKEN_SECRET` を流用。
+- **追加 env（キー名のみ）**: `X_REPLY_ENABLED`（kill switch・既定 false）。任意で `X_REPLY_DAILY_CAP`（既定 20）。
 - 読取（search）が有料 tier 前提のため、**課金設定は 👤**（developer portal / 従量課金の支払い設定）。
 - LLM: 起草は既存 `ANTHROPIC_API_KEY_TRY` 系を流用（`/try` と同じ予算・kill switch を共有）。
 
-## 6. ガードレール
+## 6. ガードレール（人手承認の代替＝決定的な安全弁）
 
-- 送信 **human_approval 固定**（auto 化しない）。
-- soft cap（リプ 20/日 等）をコードで強制。アカウント上限（200/日）に達する前に自前で止める。
-- テンプレ反復・無差別リプの禁止（prompt + 起草の多様性チェック）。
+auto 送信のため、以下は「あれば良い」ではなく**送信の前提条件**。すべて決定的（LLM 判断に依存しない）。
+
+- **kill switch**: `X_REPLY_ENABLED !== "true"` で全送信停止（env 1 つ）。
+- **soft cap**: リプ既定 20/日をコードで強制。アカウント上限（200/日）に達する前に自前で止める。
+- **類似度ガード**: 直近送信リプ（KV 保持）との類似度が閾値超なら破棄＝テンプレ反復・無差別リプを機械排除（platform manipulation 回避）。
+- **リンク非付与 / NG 語**: 本文に URL を含めない・禁止語を弾く。
+- **冪等**: 同一ツイートへの二重リプを弾く。
 - 読取本文は prompt injection の入口。起草層に push / 送信 creds を持たせない（層分離）。
 
 ## 7. テスト（`scripts/test-publish.mjs` 拡張・ネットワーク不要の unit）
@@ -97,7 +108,7 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 
 ## 8. 受け入れ基準
 
-- discover → draft → 承認 → send の 1 本が、既存 `PUBLISH_TOKEN` gate 下で通る。
-- 無認証で全エンドポイントが 401。
-- soft cap / 冪等 / seen 除外が unit で green（`npm test`）。
-- **有効化（実運用でリプを回す）・読取課金は 👤 判断後**（戦略 doc §8）。
+- discover → draft（+ガードレール）→ send の 1 本が、既存 `PUBLISH_TOKEN` gate 下で通る（人手承認なし）。
+- 無認証で全エンドポイントが 401。`X_REPLY_ENABLED` 未設定なら send が 503（kill switch）。
+- soft cap / 冪等 / 類似度ガード / seen 除外が unit で green（`npm test`）。
+- **有効化（`X_REPLY_ENABLED=true`）・読取課金は 👤 判断後**（戦略 doc §8）。

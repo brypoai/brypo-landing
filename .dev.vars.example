@@ -33,6 +33,19 @@ PUBLISH_WEBHOOK_URL=
 # that bounds the damage if PUBLISH_TOKEN leaks. Optional; defaults to 50.
 PUBLISH_DAILY_LIMIT=50
 
+# ---- /api/x-reply (owner-only auto-reply engine) -----------------------------
+# Growth engine (dev-env docs/dev-env/x-growth-strategy.md). Reuses the X_* and
+# ANTHROPIC_API_KEY_TRY / PUBLISH_TOKEN above. OFF unless X_REPLY_ENABLED is
+# exactly "true" (kill switch). Auto-sends replies (no human approval) within
+# deterministic guardrails — keep it off until the X read tier is funded.
+X_REPLY_ENABLED=false
+# Max auto-sent replies per UTC day. Optional; defaults to 20.
+X_REPLY_DAILY_CAP=20
+# Comma-separated words that drop a draft if present. Optional.
+X_REPLY_NG_WORDS=
+# Override the drafting model. Optional; defaults to the /try model (Haiku).
+X_REPLY_MODEL=
+
 # ---- /api/metrics (owner-only KPI snapshot) ----------------------------------
 # Tally API key (Tally → Settings → API keys) for the waitlist signup count.
 # Optional: unset → the waitlist column stays a fill-by-hand cell.

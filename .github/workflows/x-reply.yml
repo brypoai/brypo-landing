@@ -1,0 +1,74 @@
+# .github/workflows/x-reply.yml
+#
+# Scheduled driver for the X reply-engine (@kokibuilds growth; strategy:
+# dev-env docs/dev-env/x-growth-strategy.md). Every few hours it POSTs to
+# /api/x-reply/run, which drafts + guards + auto-sends a couple of replies.
+# Same pattern as the metrics snapshot: a cron that calls the Cloudflare
+# endpoint with PUBLISH_TOKEN — no new Cloudflare Worker / cron binding.
+#
+# SAFE UNTIL ARMED — this workflow no-ops (exits 0) unless BOTH:
+#   1. the repo secret PUBLISH_TOKEN is set (else: skip), AND
+#   2. the endpoint is armed with X_REPLY_ENABLED=true in Cloudflare Pages
+#      (else the endpoint returns 503 and this logs "disabled").
+# Live discovery also needs a funded X read tier (pay-per-use). So scheduling
+# this is harmless before the owner charges + flips the switch.
+#
+# Cadence: every 4h, max_sends=2 per run → up to ~12 replies/day, held under
+# the endpoint's daily cap (X_REPLY_DAILY_CAP, default 20). Spreading small
+# batches avoids the burst pattern that looks like a bot.
+
+name: x-reply
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Draft + guardrails only, send nothing (calibration)"
+        type: boolean
+        default: false
+      max_sends:
+        description: "Max replies to send this run"
+        default: "2"
+  schedule:
+    # Every 4 hours (UTC). GitHub cron is best-effort; exact minute may drift.
+    - cron: "0 */4 * * *"
+
+permissions: {}
+
+concurrency:
+  group: x-reply
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - name: trigger one reply-engine pass
+        env:
+          TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          DRY: ${{ inputs.dry_run }}
+          MAX: ${{ inputs.max_sends }}
+        run: |
+          set -euo pipefail
+          if [ -z "${TOKEN}" ]; then
+            echo "PUBLISH_TOKEN not set — skipping. Add it in Settings → Secrets and variables → Actions to arm."
+            exit 0
+          fi
+          DRY="${DRY:-false}"; [ -z "$DRY" ] && DRY="false"
+          MAX="${MAX:-2}";     [ -z "$MAX" ] && MAX="2"
+          body=$(printf '{"dry_run": %s, "max_sends": %s}' "$DRY" "$MAX")
+          echo "POST /api/x-reply/run  body=${body}"
+          code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
+            https://brypo.com/api/x-reply/run \
+            -H "X-Publish-Token: ${TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "${body}") || { echo "curl failed"; exit 1; }
+          echo "HTTP ${code}"
+          cat resp.json 2>/dev/null || true
+          echo
+          case "${code}" in
+            200) echo "ok" ;;
+            503) echo "reply-engine disabled (set X_REPLY_ENABLED=true in Cloudflare Pages to arm) — no-op" ; exit 0 ;;
+            401) echo "unauthorized — PUBLISH_TOKEN in Actions does not match Cloudflare Pages" ; exit 1 ;;
+            *)   echo "unexpected status ${code}" ; exit 1 ;;
+          esac

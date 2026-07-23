@@ -242,6 +242,105 @@ stderr, the single Markdown row to stdout. Unlike `/api/publish`, this
 endpoint has no daily cap or `PUBLISH_ENABLED` gate (read-only); the constant-
 time `PUBLISH_TOKEN` check is the only guard.
 
+## Reply engine (`/api/x-reply/*`) — growth (distribution)
+
+Owner-gated auto-reply engine for @kokibuilds growth (strategy: dev-env
+`docs/dev-env/x-growth-strategy.md`; spec: `docs/specs/x-reply-engine/spec.md`).
+Reuses the `X_*` creds, `ANTHROPIC_API_KEY_TRY`, and `PUBLISH_TOKEN`. **No
+per-reply human approval** (owner decision 2026-07-22) — deterministic
+guardrails in `functions/api/_xreply.ts` are the safety layer.
+
+- `POST /api/x-reply/run` — one pass: discover (`GET /2/tweets/search/recent`,
+  or explicit `targets`) → LLM draft → guardrails (weighted-length, no-link,
+  NG-word, trigram-similarity vs recent, idempotency) → `POST /2/tweets`
+  reply → daily cap. `dry_run:true` drafts without sending. Header
+  `X-Publish-Token: <PUBLISH_TOKEN>`.
+- `GET /api/x-reply/digest?date=YYYY-MM-DD` — owner readout of sends/skips.
+
+**OFF by default.** Nothing runs until `X_REPLY_ENABLED="true"`. Live discovery
+needs a **funded X read tier** (pay-per-use; owner sets billing in the X
+developer portal) — but `targets:[{id,authorHandle,text}]` replies to
+hand-picked posts with no read call, so it works before billing is set up.
+
+| Key | Type | Purpose |
+| --- | ---- | ------- |
+| `X_REPLY_ENABLED`   | Plain var | `"true"` to arm; anything else = 503 `code=disabled` (kill switch) |
+| `X_REPLY_DAILY_CAP` | Plain var | Max auto-sent replies per UTC day (optional; default 20) |
+| `X_REPLY_NG_WORDS`  | Plain var | Comma-separated words that drop a draft (optional) |
+| `X_REPLY_MODEL`     | Plain var | Override drafting model (optional; default = /try Haiku) |
+
+- **Stop all replies now**: `X_REPLY_ENABLED="false"` → 503.
+- **Calibrate the prompt**: run with `dry_run:true`, then read `/api/x-reply/digest`.
+- **`max_sends`** (body, optional): per-run send ceiling, ≤ the daily cap. The
+  scheduler passes a small value so replies trickle out instead of bursting.
+- KV keys (namespace `TRY_KV`): `xreply:count:YYYY-MM-DD` (daily cap),
+  `xreply:seen:<id>` (already replied), `xreply:recent` (similarity corpus),
+  `xreply:digest:YYYY-MM-DD` (owner log), `xreply:idem:<hash>` (dedup).
+
+### Scheduling (`.github/workflows/x-reply.yml`)
+
+A GitHub Actions cron (every 4h, `max_sends=2` → ~12/day, under the daily cap)
+POSTs to `/api/x-reply/run` — same pattern as the metrics snapshot, no
+Cloudflare cron binding needed. It **no-ops safely** until armed: it skips when
+the `PUBLISH_TOKEN` repo secret is unset, and logs "disabled" while the
+endpoint returns 503. `workflow_dispatch` runs it on demand (with a `dry_run`
+toggle for calibration).
+
+### Arming the engine (owner — one-time)
+
+1. **Fund the X read tier** (pay-per-use) in the X developer portal, so
+   `GET /2/tweets/search/recent` works. *(Skippable at first: POST
+   `{"targets":[{id,authorHandle,text}]}` replies to hand-picked posts with no
+   read call.)*
+2. **Cloudflare Pages → Settings → Variables** (Production + Preview): set
+   `X_REPLY_ENABLED="true"`. Optional: `X_REPLY_DAILY_CAP`, `X_REPLY_NG_WORDS`.
+3. **GitHub → Settings → Secrets and variables → Actions**: add `PUBLISH_TOKEN`
+   (same value as the Cloudflare Pages secret) so the cron can authenticate.
+4. **Calibrate first (recommended)**: Actions → x-reply → *Run workflow* with
+   `dry_run=true`, then `GET /api/x-reply/digest` and tune the prompt in
+   `functions/api/_xreply.ts` (`REPLY_SYSTEM_PROMPT`) if needed.
+5. Leave the schedule on. To pause everything later: `X_REPLY_ENABLED="false"`.
+
+### Full URLs (copy-paste)
+
+**Endpoints** (production; live after PR #18 merges to `main`):
+- `POST https://brypo.com/api/x-reply/run`
+- `GET  https://brypo.com/api/x-reply/digest`
+
+Branch preview (live now on the PR branch, if Preview env has the vars set):
+- `https://claude-brypo-progress-0tbj9v.brypo-landing.pages.dev/api/x-reply/run`
+
+**Arming pages** (the three owner switches):
+- Fund X read tier → `https://developer.x.com/en/portal/dashboard`
+- Cloudflare Pages env (`X_REPLY_ENABLED` etc.) → `https://dash.cloudflare.com/a26fbe7215ac6be590cdc325beb62c3a/pages/view/brypo-landing/settings/environment-variables`
+- GitHub Actions secret (`PUBLISH_TOKEN`) → `https://github.com/brypoai/brypo-landing/settings/secrets/actions`
+- Run the cron manually / `dry_run` → `https://github.com/brypoai/brypo-landing/actions/workflows/x-reply.yml`
+
+**curl** (`$PUBLISH_TOKEN` = the Cloudflare Pages publish token; never inline the value):
+
+```sh
+# 1) calibrate — draft + guardrails, send nothing
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"dry_run": true, "max_sends": 2}'
+
+# 2) read today's digest (what it drafted / would send / skipped)
+curl -sS "https://brypo.com/api/x-reply/digest" \
+  -H "X-Publish-Token: $PUBLISH_TOKEN"
+
+# 3) live one-off — send up to 2 replies now
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"max_sends": 2}'
+
+# 4) seed hand-picked targets — works BEFORE funding the read tier
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"max_sends": 1, "targets": [
+        {"id":"1890000000000000000","authorHandle":"somefounder","text":"just shipped v2 after 3 months solo"}
+      ]}'
+```
+
 ## Runbook
 
 - **Launch day**: raise `DAILY_BUDGET_USD` to `25` in Pages → Settings →

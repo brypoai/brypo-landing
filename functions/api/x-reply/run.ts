@@ -42,6 +42,7 @@ import {
   normalizeText,
   parseReplyDraft,
   replyIdempotencyPayload,
+  toQueryString,
   validateReplyText,
   xReplyCountKey,
   xReplyDigestKey,
@@ -129,9 +130,10 @@ async function searchRecent(
     "tweet.fields": "lang",
     "user.fields": "username",
   };
-  const url = `${base}?${Object.entries(qp)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
-    .join("&")}`;
+  // Encode the URL with the SAME percent-encoding as the OAuth signature base
+  // string (see toQueryString) — otherwise queries with operator groups like
+  // "(a OR b)" mismatch the signature and X returns 401 Unauthorized.
+  const url = `${base}?${toQueryString(qp)}`;
   const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
   const ts = Math.floor(Date.now() / 1000);
   const auth = await buildOAuth1Header("GET", base, creds, nonce, ts, qp);

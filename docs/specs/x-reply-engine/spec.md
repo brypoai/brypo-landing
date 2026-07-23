@@ -48,7 +48,8 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 
 ### `POST /api/x-reply/run`（1 パス: discover → draft → guardrails → auto 送信）
 - **kill switch**: `X_REPLY_ENABLED !== "true"` なら 503（既存 `PUBLISH_ENABLED` と同型・停止は env 1 つ）。
-- 入力: `{ token, targets?: [{id, authorHandle, text}], queries?: string[], dry_run?: boolean }`。
+- 入力: `{ token, targets?: [{id, authorHandle, text}], queries?: string[], dry_run?: boolean, max_sends?: number }`。
+  `max_sends` は 1 パスの送信上限（≤ daily cap）。Cron が小さく刻んでバースト（bot signal）を避ける。
   - `targets` あり → その投稿へ直接リプ（**読取 API 不要＝チャージ前でも動く**・手選びの種蒔き用）。
   - `targets` なし → `GET /2/tweets/search/recent`（従量課金・要チャージ）で ICP 候補を取得。失敗時は
     握り潰さず `searchError` を返す。
@@ -65,8 +66,10 @@ Go/No-Go #1（2026-11-01・X フォロワー 300+）の律速 = distribution。�
 - 入力: `?date=YYYY-MM-DD`（既定 today・UTC）。
 - 出力: その日の `xreply:digest:*`（送信/スキップの一覧・理由・本文つき）＋ 送信数。prompt 微調整用（任意）。
 
-> オーケストレーション: `run` を Cloudflare Cron Trigger か owner の手動 POST で叩く。人手承認は無し。
-> LLM 起草は `/try` の `ANTHROPIC_API_KEY_TRY`（$50/mo cap）を共有。
+> オーケストレーション: `.github/workflows/x-reply.yml`（GitHub Actions cron・4h おき・`max_sends=2`）が
+> `run` を叩く（metrics snapshot と同型・Cloudflare cron binding 不要）。`PUBLISH_TOKEN` 未設定 or
+> `X_REPLY_ENABLED != true` の間は no-op（安全）。人手承認は無し。LLM 起草は `/try` の
+> `ANTHROPIC_API_KEY_TRY`（$50/mo cap）を共有。
 
 ## 4. リプ起草 prompt（要点）
 

@@ -368,6 +368,13 @@ async function handlePost(context: PagesContext): Promise<Response> {
     return Number.isFinite(n) && n > 0 ? n : DEFAULT_REPLY_DAILY_CAP;
   })();
   const dryRun = body?.dry_run === true;
+  // Per-run send ceiling — lets a scheduled trigger send a few at a time
+  // instead of emptying the whole daily budget in one burst (burst = bot
+  // signal). Defaults to the daily budget when unset. Never exceeds it.
+  const perRunCap = (() => {
+    const n = parseInt(String(body?.max_sends ?? ""), 10);
+    return Number.isFinite(n) && n > 0 ? Math.min(n, dailyCap) : dailyCap;
+  })();
 
   // 4. Daily cap (UTC). Read-modify-write; a dropped increment at this scale
   // only ever UNDER-counts (sends fewer), which is the safe direction.
@@ -450,9 +457,10 @@ async function handlePost(context: PagesContext): Promise<Response> {
   const localRecent = [...recentReplies]; // grows within the run to dedup peers
 
   for (const c of candidates) {
-    if (!dryRun && budget <= 0) {
-      results.push({ id: c.id, status: "skipped", reason: "daily_cap_reached" });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reason: "daily_cap_reached" });
+    if (!dryRun && (budget <= 0 || sent >= perRunCap)) {
+      const reason = budget <= 0 ? "daily_cap_reached" : "per_run_cap_reached";
+      results.push({ id: c.id, status: "skipped", reason });
+      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reason });
       skipped++;
       continue;
     }

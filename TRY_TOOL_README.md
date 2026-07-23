@@ -271,9 +271,35 @@ hand-picked posts with no read call, so it works before billing is set up.
 
 - **Stop all replies now**: `X_REPLY_ENABLED="false"` → 503.
 - **Calibrate the prompt**: run with `dry_run:true`, then read `/api/x-reply/digest`.
+- **`max_sends`** (body, optional): per-run send ceiling, ≤ the daily cap. The
+  scheduler passes a small value so replies trickle out instead of bursting.
 - KV keys (namespace `TRY_KV`): `xreply:count:YYYY-MM-DD` (daily cap),
   `xreply:seen:<id>` (already replied), `xreply:recent` (similarity corpus),
   `xreply:digest:YYYY-MM-DD` (owner log), `xreply:idem:<hash>` (dedup).
+
+### Scheduling (`.github/workflows/x-reply.yml`)
+
+A GitHub Actions cron (every 4h, `max_sends=2` → ~12/day, under the daily cap)
+POSTs to `/api/x-reply/run` — same pattern as the metrics snapshot, no
+Cloudflare cron binding needed. It **no-ops safely** until armed: it skips when
+the `PUBLISH_TOKEN` repo secret is unset, and logs "disabled" while the
+endpoint returns 503. `workflow_dispatch` runs it on demand (with a `dry_run`
+toggle for calibration).
+
+### Arming the engine (owner — one-time)
+
+1. **Fund the X read tier** (pay-per-use) in the X developer portal, so
+   `GET /2/tweets/search/recent` works. *(Skippable at first: POST
+   `{"targets":[{id,authorHandle,text}]}` replies to hand-picked posts with no
+   read call.)*
+2. **Cloudflare Pages → Settings → Variables** (Production + Preview): set
+   `X_REPLY_ENABLED="true"`. Optional: `X_REPLY_DAILY_CAP`, `X_REPLY_NG_WORDS`.
+3. **GitHub → Settings → Secrets and variables → Actions**: add `PUBLISH_TOKEN`
+   (same value as the Cloudflare Pages secret) so the cron can authenticate.
+4. **Calibrate first (recommended)**: Actions → x-reply → *Run workflow* with
+   `dry_run=true`, then `GET /api/x-reply/digest` and tune the prompt in
+   `functions/api/_xreply.ts` (`REPLY_SYSTEM_PROMPT`) if needed.
+5. Leave the schedule on. To pause everything later: `X_REPLY_ENABLED="false"`.
 
 ## Runbook
 

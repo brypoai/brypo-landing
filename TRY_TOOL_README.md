@@ -242,6 +242,39 @@ stderr, the single Markdown row to stdout. Unlike `/api/publish`, this
 endpoint has no daily cap or `PUBLISH_ENABLED` gate (read-only); the constant-
 time `PUBLISH_TOKEN` check is the only guard.
 
+## Reply engine (`/api/x-reply/*`) — growth (distribution)
+
+Owner-gated auto-reply engine for @kokibuilds growth (strategy: dev-env
+`docs/dev-env/x-growth-strategy.md`; spec: `docs/specs/x-reply-engine/spec.md`).
+Reuses the `X_*` creds, `ANTHROPIC_API_KEY_TRY`, and `PUBLISH_TOKEN`. **No
+per-reply human approval** (owner decision 2026-07-22) — deterministic
+guardrails in `functions/api/_xreply.ts` are the safety layer.
+
+- `POST /api/x-reply/run` — one pass: discover (`GET /2/tweets/search/recent`,
+  or explicit `targets`) → LLM draft → guardrails (weighted-length, no-link,
+  NG-word, trigram-similarity vs recent, idempotency) → `POST /2/tweets`
+  reply → daily cap. `dry_run:true` drafts without sending. Header
+  `X-Publish-Token: <PUBLISH_TOKEN>`.
+- `GET /api/x-reply/digest?date=YYYY-MM-DD` — owner readout of sends/skips.
+
+**OFF by default.** Nothing runs until `X_REPLY_ENABLED="true"`. Live discovery
+needs a **funded X read tier** (pay-per-use; owner sets billing in the X
+developer portal) — but `targets:[{id,authorHandle,text}]` replies to
+hand-picked posts with no read call, so it works before billing is set up.
+
+| Key | Type | Purpose |
+| --- | ---- | ------- |
+| `X_REPLY_ENABLED`   | Plain var | `"true"` to arm; anything else = 503 `code=disabled` (kill switch) |
+| `X_REPLY_DAILY_CAP` | Plain var | Max auto-sent replies per UTC day (optional; default 20) |
+| `X_REPLY_NG_WORDS`  | Plain var | Comma-separated words that drop a draft (optional) |
+| `X_REPLY_MODEL`     | Plain var | Override drafting model (optional; default = /try Haiku) |
+
+- **Stop all replies now**: `X_REPLY_ENABLED="false"` → 503.
+- **Calibrate the prompt**: run with `dry_run:true`, then read `/api/x-reply/digest`.
+- KV keys (namespace `TRY_KV`): `xreply:count:YYYY-MM-DD` (daily cap),
+  `xreply:seen:<id>` (already replied), `xreply:recent` (similarity corpus),
+  `xreply:digest:YYYY-MM-DD` (owner log), `xreply:idem:<hash>` (dedup).
+
 ## Runbook
 
 - **Launch day**: raise `DAILY_BUDGET_USD` to `25` in Pages → Settings →

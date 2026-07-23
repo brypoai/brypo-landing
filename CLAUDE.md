@@ -25,9 +25,13 @@ functions/api/
   _lib.ts                       純粋ヘルパー（validator・parse・sanitize・cost）
   _prompts.ts                   5 生成 prompts + cross-check prompt
   _publish.ts                   公開系の純粋ヘルパー（整形・tweet chunking・OAuth 1.0a）
+  x-reply/run.ts                POST /api/x-reply/run（リプライエンジン: 起草→ガードレール→auto送信）
+  x-reply/digest.ts             GET /api/x-reply/digest（送信/スキップの事後ダイジェスト・owner-only）
+  _xreply.ts                    リプライエンジンの純粋ヘルパー（ガードレール・類似度・候補フィルタ）
 scripts/
   test-crosscheck.mjs           _lib.ts の unit テスト + ライブ tuning matrix
   test-publish.mjs              _publish.ts / _lib.ts の unit テスト
+  test-xreply.mjs               _xreply.ts の unit テスト（ガードレール24ケース）
 robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 ```
 
@@ -41,6 +45,7 @@ robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 | cross-check unit のみ                 | `node scripts/test-crosscheck.mjs --unit`                                      |
 | cross-check ライブ tuning matrix      | `node scripts/test-crosscheck.mjs`（Anthropic キー必要・オーナーがローカルで） |
 | publish unit                          | `node scripts/test-publish.mjs`                                                |
+| reply-engine unit                     | `node scripts/test-xreply.mjs`                                                 |
 | ローカル開発                          | `npm run dev`（wrangler pages dev・ローカル KV エミュレーション）              |
 
 - unit テストは**依存ゼロ・ネットワーク不要**（`scripts/*.mjs` が `functions/api/*.ts` を Node の type stripping で直接 import する）。**Node >= 22.18 必須**

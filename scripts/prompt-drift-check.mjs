@@ -13,9 +13,11 @@
  * an app-side edit silently fails to propagate. This script makes that
  * LOUD:
  *
- *   Part A (always): fingerprint each /try prompt and fail if one
- *     changed without re-baselining scripts/prompt-fingerprints.json via
- *     `--update`. Catches landing-side edits.
+ *   Part A (always): fingerprint each /try prompt (the 5 generation
+ *     prompts, the cross-check prompt, and the generation injection
+ *     guard) and fail if one changed without re-baselining
+ *     scripts/prompt-fingerprints.json via `--update`. Catches
+ *     landing-side edits.
  *   Part B (only when ../brypo is checked out): compare the persona
  *     opening sentence of each format between app and /try. These must
  *     stay identical — the intentional differences live in later
@@ -31,7 +33,11 @@
  * No dependencies. Node >= 22.18 (type-stripped .ts import), same posture
  * as the other scripts in this directory.
  */
-import { SYSTEM_PROMPTS, CROSS_CHECK_SYSTEM_PROMPT } from "../functions/api/_prompts.ts";
+import {
+  SYSTEM_PROMPTS,
+  CROSS_CHECK_SYSTEM_PROMPT,
+  GENERATION_INJECTION_GUARD,
+} from "../functions/api/_prompts.ts";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -61,8 +67,20 @@ const ACCEPTED_PERSONA_DRIFT = {
   },
 };
 
-// The prompt set under guard: the five generation prompts + the cross-check prompt.
-const guarded = { ...SYSTEM_PROMPTS, __crosscheck: CROSS_CHECK_SYSTEM_PROMPT };
+// The prompt set under guard: the five generation prompts, the cross-check
+// prompt, and the generation injection guard. The injection guard is another
+// hand-maintained fork of an app-side string (format-render's
+// GENERATION_INJECTION_GUARD) appended to every generation prompt at the call
+// site (try-generate.ts) — so it drifts on the same silent path as the
+// SYSTEM_PROMPTS and belongs under the same fingerprint. It stays out of the
+// cross-repo persona check (Part B) because its delimiter wording is a
+// documented intentional difference (/try wraps <<<FOUNDER_NOTES>>>, the app
+// wraps <<<INTERNAL_VERSION>>>), same as __crosscheck.
+const guarded = {
+  ...SYSTEM_PROMPTS,
+  __crosscheck: CROSS_CHECK_SYSTEM_PROMPT,
+  __injection_guard: GENERATION_INJECTION_GUARD,
+};
 const current = Object.fromEntries(
   Object.keys(guarded).sort().map((k) => [k, fp(guarded[k])]),
 );

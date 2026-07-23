@@ -294,6 +294,10 @@ toggle for calibration).
    read call.)*
 2. **Cloudflare Pages → Settings → Variables** (Production + Preview): set
    `X_REPLY_ENABLED="true"`. Optional: `X_REPLY_DAILY_CAP`, `X_REPLY_NG_WORDS`.
+   ⚠️ **Pages env changes only take effect on a NEW deployment** — after setting
+   it, redeploy (Deployments → latest Production → Retry deployment, or push any
+   commit to `main`). The running deployment keeps the vars it was built with,
+   so `/api/x-reply/run` stays `503 disabled` until you redeploy.
 3. **GitHub → Settings → Secrets and variables → Actions**: add `PUBLISH_TOKEN`
    (same value as the Cloudflare Pages secret) so the cron can authenticate.
 4. **Calibrate first (recommended)**: Actions → x-reply → *Run workflow* with
@@ -344,8 +348,8 @@ curl -sS -X POST https://brypo.com/api/x-reply/run \
 ## Runbook
 
 - **Launch day**: raise `DAILY_BUDGET_USD` to `25` in Pages → Settings →
-  Variables (Production), redeploy not required for env-only changes on
-  Functions (new invocations pick it up; if in doubt, re-deploy latest).
+  Variables (Production), then **redeploy** — Pages env changes only take
+  effect on a new deployment; the running deployment keeps its build-time vars.
 - **Kill switch**: set `TRY_TOOL_ENABLED` to `false` → endpoint returns
   503 `code=disabled`; the page shows a friendly state with a waitlist CTA.
 - **"Daily reset"** means the **UTC** date changes (09:00 JST). The budget

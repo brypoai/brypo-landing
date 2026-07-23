@@ -301,6 +301,46 @@ toggle for calibration).
    `functions/api/_xreply.ts` (`REPLY_SYSTEM_PROMPT`) if needed.
 5. Leave the schedule on. To pause everything later: `X_REPLY_ENABLED="false"`.
 
+### Full URLs (copy-paste)
+
+**Endpoints** (production; live after PR #18 merges to `main`):
+- `POST https://brypo.com/api/x-reply/run`
+- `GET  https://brypo.com/api/x-reply/digest`
+
+Branch preview (live now on the PR branch, if Preview env has the vars set):
+- `https://claude-brypo-progress-0tbj9v.brypo-landing.pages.dev/api/x-reply/run`
+
+**Arming pages** (the three owner switches):
+- Fund X read tier → `https://developer.x.com/en/portal/dashboard`
+- Cloudflare Pages env (`X_REPLY_ENABLED` etc.) → `https://dash.cloudflare.com/a26fbe7215ac6be590cdc325beb62c3a/pages/view/brypo-landing/settings/environment-variables`
+- GitHub Actions secret (`PUBLISH_TOKEN`) → `https://github.com/brypoai/brypo-landing/settings/secrets/actions`
+- Run the cron manually / `dry_run` → `https://github.com/brypoai/brypo-landing/actions/workflows/x-reply.yml`
+
+**curl** (`$PUBLISH_TOKEN` = the Cloudflare Pages publish token; never inline the value):
+
+```sh
+# 1) calibrate — draft + guardrails, send nothing
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"dry_run": true, "max_sends": 2}'
+
+# 2) read today's digest (what it drafted / would send / skipped)
+curl -sS "https://brypo.com/api/x-reply/digest" \
+  -H "X-Publish-Token: $PUBLISH_TOKEN"
+
+# 3) live one-off — send up to 2 replies now
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"max_sends": 2}'
+
+# 4) seed hand-picked targets — works BEFORE funding the read tier
+curl -sS -X POST https://brypo.com/api/x-reply/run \
+  -H "X-Publish-Token: $PUBLISH_TOKEN" -H "Content-Type: application/json" \
+  -d '{"max_sends": 1, "targets": [
+        {"id":"1890000000000000000","authorHandle":"somefounder","text":"just shipped v2 after 3 months solo"}
+      ]}'
+```
+
 ## Runbook
 
 - **Launch day**: raise `DAILY_BUDGET_USD` to `25` in Pages → Settings →

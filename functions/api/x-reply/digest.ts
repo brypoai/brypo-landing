@@ -4,12 +4,12 @@
  * GET /api/x-reply/digest — owner-only reply-candidate list (L0-1: the human
  * reads this, then replies by hand in the X app). Read-only; PUBLISH_TOKEN
  * gated. ?date=YYYY-MM-DD selects a day (default today, UTC). Returns the KV
- * digest array written by run.ts (each entry: id, authorHandle, url,
- * postedAtJst, likes, replies, textHead, via, status, reply?, reason?).
+ * digest array written by run.ts (each entry: url, postedAtJst, likes,
+ * replies, textHead, via).
  */
 
 import { timingSafeEqual } from "../_publish";
-import { xReplyCountKey, xReplyDigestKey } from "../_xreply";
+import { xReplyDigestKey } from "../_xreply";
 
 interface KVNamespace {
   get(key: string): Promise<string | null>;
@@ -67,17 +67,7 @@ async function handleGet(context: PagesContext): Promise<Response> {
   } catch {
     entries = [];
   }
-  let sentCount = 0;
-  try {
-    sentCount = parseInt((await env.TRY_KV.get(xReplyCountKey(anchor))) ?? "0", 10) || 0;
-  } catch {
-    sentCount = 0;
-  }
-
-  const candidates = entries.filter((e: any) => e?.status === "candidate").length;
-  const skipped = entries.filter((e: any) => e?.status === "skipped").length;
-
-  return json({ date: day, sentCount, summary: { entries: entries.length, candidates, skipped }, entries }, 200);
+  return json({ date: day, summary: { entries: entries.length }, entries }, 200);
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {

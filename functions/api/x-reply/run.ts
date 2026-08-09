@@ -2,7 +2,9 @@
  * functions/api/x-reply/run.ts
  *
  * POST /api/x-reply/run — the X reply-CANDIDATE lister (@kokibuilds; dev-env
- * docs/dev-env/x-growth-strategy.md): discover → draft → guardrails → LIST.
+ * docs/dev-env/x-growth-strategy.md): discover → filter → LIST. No drafting —
+ * the Anthropic call was removed 2026-08-10 (drafts were templated + invented
+ * first-person experience); the human writes every reply.
  * It never posts to X — the send path was severed AT CODE LEVEL (2026-08-10,
  * L0-1): postReply / POST /2/tweets no longer exists here, and any request
  * without body.dry_run === true gets 400. The human reads the digest and
@@ -12,19 +14,12 @@
 
 import { timingSafeEqual, buildOAuth1Header } from "../_publish";
 import type { OAuth1Creds } from "../_publish";
-import { MODEL } from "../_lib";
 import {
   DEFAULT_ICP_QUERIES,
-  buildReplyUserMessage,
   filterCandidates,
-  normalizeText,
-  parseReplyDraft,
   toQueryString,
-  validateReplyText,
   xReplyDigestKey,
-  xReplyRecentKey,
   xReplySeenKey,
-  REPLY_SYSTEM_PROMPT,
 } from "../_xreply";
 import type { Candidate } from "../_xreply";
 
@@ -42,19 +37,11 @@ interface Env {
   PUBLISH_TOKEN?: string;
   // Kill switch — OFF unless exactly "true". Nothing sends while this is unset.
   X_REPLY_ENABLED?: string;
-  // Auto-send ceiling per UTC day. Optional; defaults to DEFAULT_REPLY_DAILY_CAP.
-  X_REPLY_DAILY_CAP?: string;
-  // Comma-separated NG words; a draft containing any is dropped. Optional.
-  X_REPLY_NG_WORDS?: string;
-  // Override the drafting model. Optional; defaults to the /try MODEL (Haiku).
-  X_REPLY_MODEL?: string;
   // X OAuth 1.0a (same four as /api/publish).
   X_API_KEY?: string;
   X_API_SECRET?: string;
   X_ACCESS_TOKEN?: string;
   X_ACCESS_TOKEN_SECRET?: string;
-  // Anthropic key — shared with /try (same $50/mo cap + kill switch posture).
-  ANTHROPIC_API_KEY_TRY?: string;
   TRY_KV?: KVNamespace;
 }
 
@@ -66,8 +53,8 @@ interface PagesContext {
 const DIGEST_TTL_S = 7 * 24 * 3600;
 // Presented-in-digest marker (L0-1): once listed, held out for 7 days.
 const SEEN_TTL_S = 7 * 24 * 3600;
-// Hard ceiling on candidates processed per request — bounds LLM spend and the
-// Workers subrequest budget even if a huge target list is posted.
+// Hard ceiling on candidates processed per request — bounds the Workers
+// subrequest budget even if a huge target list is posted.
 const MAX_PER_RUN = 25;
 
 function json(body: unknown, status: number): Response {
@@ -157,74 +144,18 @@ async function searchRecent(
   return { candidates };
 }
 
-// ---- Anthropic reply draft --------------------------------------------------
-
-async function draftReply(
-  apiKey: string,
-  model: string,
-  c: Candidate,
-): Promise<string | null> {
-  let res: Response;
-  try {
-    res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 512,
-        system: REPLY_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: buildReplyUserMessage(c) }],
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-  } catch {
-    return null;
-  }
-  if (!res.ok) return null;
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    return null;
-  }
-  const block = Array.isArray(data?.content)
-    ? data.content.find((b: any) => b?.type === "text")
-    : null;
-  return typeof block?.text === "string" ? block.text : null;
-}
-
 // ---- KV helpers -------------------------------------------------------------
 
-async function readRecentReplies(kv: KVNamespace): Promise<string[]> {
-  try {
-    const raw = await kv.get(xReplyRecentKey());
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
 interface DigestEntry {
-  id: string;
-  authorHandle: string;
   url?: string;
   postedAtJst?: string | null;
   likes?: number | null;
   replies?: number | null;
   textHead?: string;
   via?: string;
-  status: "candidate" | "skipped";
-  reply?: string;
-  reason?: string;
 }
 
-async function appendDigest(kv: KVNamespace, now: Date, entries: DigestEntry[]) {
+async function appendDigest(kv: KVNamespace, now: Date, entries: DigestEntry[], listedIds: string[]) {
   if (entries.length === 0) return;
   const key = xReplyDigestKey(now);
   let existing: DigestEntry[] = [];
@@ -245,9 +176,9 @@ async function appendDigest(kv: KVNamespace, now: Date, entries: DigestEntry[]) 
     /* non-fatal */
   }
   // Presentation-based dedup: a listed id is held out for 7 days (SEEN_TTL_S).
-  for (const e of entries) {
+  for (const id of listedIds) {
     try {
-      await kv.put(xReplySeenKey(e.id), "1", { expirationTtl: SEEN_TTL_S });
+      await kv.put(xReplySeenKey(id), "1", { expirationTtl: SEEN_TTL_S });
     } catch {
       /* non-fatal */
     }
@@ -308,16 +239,10 @@ async function handlePost(context: PagesContext): Promise<Response> {
   if (!creds.consumerKey || !creds.consumerSecret || !creds.accessToken || !creds.accessTokenSecret) {
     return finish(json({ error: "X credentials not configured.", code: "x_unconfigured" }, 503));
   }
-  const anthropicKey = env.ANTHROPIC_API_KEY_TRY ?? "";
-  if (anthropicKey.length === 0) {
-    return finish(json({ error: "Drafting key not configured.", code: "llm_unconfigured" }, 503));
-  }
   const kv = env.TRY_KV;
   if (!kv) {
     return finish(json({ error: "KV not configured.", code: "kv_unconfigured" }, 503));
   }
-  const model = env.X_REPLY_MODEL || MODEL;
-  const ngWords = (env.X_REPLY_NG_WORDS ?? "").split(",").map((w) => w.trim()).filter(Boolean);
 
   // 5. Gather candidates: explicit targets, else live search (paid tier).
   // meta rides beside the Candidate shape (filterCandidates drops extras).
@@ -344,7 +269,6 @@ async function handlePost(context: PagesContext): Promise<Response> {
   }
 
   // 6. Load anti-abuse state, filter, cap.
-  const recentReplies = await readRecentReplies(kv);
   const seen = new Set<string>();
   // Cheaply check the seen marker for each id we're about to consider.
   const provisional = filterCandidates(rawCandidates, { selfHandle: "kokibuilds" });
@@ -386,8 +310,6 @@ async function handlePost(context: PagesContext): Promise<Response> {
     const m = meta.get(c.id);
     const posted = m?.createdAt ? Date.parse(m.createdAt) : NaN;
     return {
-      id: c.id,
-      authorHandle: c.authorHandle,
       url: c.authorHandle
         ? `https://x.com/${c.authorHandle}/status/${c.id}`
         : `https://x.com/i/web/status/${c.id}`,
@@ -401,54 +323,23 @@ async function handlePost(context: PagesContext): Promise<Response> {
     };
   };
 
-  // 7. Per candidate: draft → guardrails → list. (No send path exists.)
-  const digest: DigestEntry[] = [];
-  const results: Array<Record<string, unknown>> = [];
-  let listed = 0;
-  let skipped = 0;
-  const localRecent = [...recentReplies]; // grows within the run to dedup peers
-
-  for (const c of candidates) {
-    const rawDraft = await draftReply(anthropicKey, model, c);
-    const parsed = rawDraft ? parseReplyDraft(rawDraft) : null;
-    if (parsed === null) {
-      results.push({ id: c.id, status: "skipped", reason: "no_usable_draft" });
-      digest.push({ ...entryBase(c), status: "skipped", reason: "no_usable_draft" });
-      skipped++;
-      continue;
-    }
-
-    const guard = validateReplyText(parsed.reply, { recentReplies: localRecent, ngWords });
-    if (!guard.ok) {
-      results.push({ id: c.id, status: "skipped", reason: guard.reason });
-      digest.push({ ...entryBase(c), status: "skipped", reply: parsed.reply, reason: guard.reason });
-      skipped++;
-      continue;
-    }
-
-    // Candidate. The draft rides along for W1 calibration only — the human
-    // writes their own reply in the X app.
-    results.push({ id: c.id, status: "candidate", reply: parsed.reply });
-    digest.push({ ...entryBase(c), status: "candidate", reply: parsed.reply });
-    listed++;
-    localRecent.unshift(normalizeText(parsed.reply));
-  }
-
-  await appendDigest(kv, now, digest);
+  // 7. Record every surviving candidate. (No drafting; no send path exists.)
+  const digest: DigestEntry[] = candidates.map(entryBase);
+  await appendDigest(kv, now, digest, candidates.map((c) => c.id));
 
   return finish(
     json(
       {
         ok: true,
         considered: candidates.length,
-        listed,
-        skipped,
+        listed: digest.length,
+        skipped: 0,
         ...(searchError ? { searchError } : {}),
-        results,
+        results: digest,
       },
       200,
     ),
-    { considered: candidates.length, listed, skipped },
+    { considered: candidates.length, listed: digest.length },
   );
 }
 

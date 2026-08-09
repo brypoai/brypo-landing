@@ -1,8 +1,9 @@
 # .github/workflows/x-reply.yml
 #
 # Daily driver for the X reply-CANDIDATE lister (@kokibuilds). POSTs
-# {"dry_run": true} once a day; the endpoint only lists candidates into the
-# digest — it never posts to X (send path severed at code level 2026-08-10;
+# {"dry_run": true} + lang:ja queries once a day; the endpoint only lists
+# candidates into the digest — no drafting (Anthropic call removed 2026-08-10)
+# and it never posts to X (send path severed at code level 2026-08-10;
 # non-dry_run gets 400). The human replies in the X app. Afterwards one ntfy
 # notification (same method as claude-ops bin/notify.sh) reports the count —
 # sent even when zero.
@@ -31,12 +32,18 @@ jobs:
         run: |
           set -euo pipefail
           [ -z "${TOKEN}" ] && { echo "PUBLISH_TOKEN not set — skipping."; exit 0; }
-          echo 'POST /api/x-reply/run  body={"dry_run": true}'
+          # lang:ja discovery queries (2026-08-10). Tuning is a follow-up task.
+          BODY=$(jq -n '{dry_run: true, queries: [
+            "\"個人開発\" (リリース OR 公開 OR 作った) -is:retweet -is:reply lang:ja",
+            "\"個人開発\" (進捗 OR ユーザー OR 収益) -is:retweet -is:reply lang:ja",
+            "\"作ってる\" (SaaS OR アプリ OR ツール) -is:retweet -is:reply lang:ja"
+          ]}')
+          echo "POST /api/x-reply/run  body=${BODY}"
           code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \
             https://brypo.com/api/x-reply/run \
             -H "X-Publish-Token: ${TOKEN}" \
             -H "Content-Type: application/json" \
-            -d '{"dry_run": true}') || { echo "curl failed"; exit 1; }
+            -d "${BODY}") || { echo "curl failed"; exit 1; }
           echo "HTTP ${code}"
           cat resp.json 2>/dev/null || true
           echo

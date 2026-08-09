@@ -1,33 +1,13 @@
 /**
  * functions/api/x-reply/run.ts
  *
- * POST /api/x-reply/run — one pass of the X reply-engine (@kokibuilds growth,
- * dev-env docs/dev-env/x-growth-strategy.md; spec docs/specs/x-reply-engine).
- *
- * discover → draft → deterministic guardrails → auto-send, in one owner-gated,
- * kill-switched call. Intended to be driven by a Cloudflare Cron Trigger (or a
- * manual owner POST). There is NO per-reply human approval (2026-07-22 owner
- * decision); the guardrails in _xreply.ts are the safety layer, and
- * X_REPLY_ENABLED is the kill switch.
- *
- * Two input modes:
- *   - body.targets: [{id, authorHandle, text}, ...] — reply to these directly.
- *     Cheap (reply writes only, no search reads); usable before the paid search
- *     tier is funded, and the way to seed hand-picked targets.
- *   - no targets → live search (GET /2/tweets/search/recent) with ICP queries.
- *     Requires a funded (pay-per-use) read tier; without it X returns an error
- *     which is surfaced, not swallowed.
- *
- * body.dry_run: true drafts + guards but sends NOTHING (calibration / testing;
- * the strategy doc's "post-hoc digest to tune the prompt" without posting).
- *
- * Cost/safety gates, in order: kill switch → owner token → daily cap → per
- * candidate (seen dedup → draft → guardrails → idempotency → reply). Every
- * outcome is written to the day's digest (KV) for the owner to review.
- *
- * Logging discipline mirrors /api/publish: metadata only — never the drafted
- * text, never the token. { action:"x-reply", status, considered, sent,
- * skipped, ms }.
+ * POST /api/x-reply/run — the X reply-CANDIDATE lister (@kokibuilds; dev-env
+ * docs/dev-env/x-growth-strategy.md): discover → draft → guardrails → LIST.
+ * It never posts to X — the send path was severed AT CODE LEVEL (2026-08-10,
+ * L0-1): postReply / POST /2/tweets no longer exists here, and any request
+ * without body.dry_run === true gets 400. The human reads the digest and
+ * replies by hand in the X app. Dedup is presentation-based: a listed id is
+ * held in KV for 7 days; human replies are not tracked. Logging: metadata only.
  */
 
 import { timingSafeEqual, buildOAuth1Header } from "../_publish";
@@ -35,16 +15,12 @@ import type { OAuth1Creds } from "../_publish";
 import { MODEL } from "../_lib";
 import {
   DEFAULT_ICP_QUERIES,
-  DEFAULT_REPLY_DAILY_CAP,
-  RECENT_REPLIES_KEPT,
   buildReplyUserMessage,
   filterCandidates,
   normalizeText,
   parseReplyDraft,
-  replyIdempotencyPayload,
   toQueryString,
   validateReplyText,
-  xReplyCountKey,
   xReplyDigestKey,
   xReplyRecentKey,
   xReplySeenKey,
@@ -88,9 +64,8 @@ interface PagesContext {
 }
 
 const DIGEST_TTL_S = 7 * 24 * 3600;
-const SEEN_TTL_S = 30 * 24 * 3600;
-const RECENT_TTL_S = 30 * 24 * 3600;
-const IDEM_TTL_S = 24 * 3600;
+// Presented-in-digest marker (L0-1): once listed, held out for 7 days.
+const SEEN_TTL_S = 7 * 24 * 3600;
 // Hard ceiling on candidates processed per request — bounds LLM spend and the
 // Workers subrequest budget even if a huge target list is posted.
 const MAX_PER_RUN = 25;
@@ -108,12 +83,14 @@ function hex(bytes: Uint8Array): string {
     .join("");
 }
 
-async function sha256Hex(s: string): Promise<string> {
-  const d = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
-  return hex(new Uint8Array(d));
-}
-
 // ---- X search (recent) — paid read tier -------------------------------------
+
+/** Presentation metadata carried alongside a Candidate. */
+interface SearchExtras {
+  createdAt?: string;
+  likeCount?: number;
+  replyCount?: number;
+}
 
 /** Search recent posts for reply candidates. Never throws: returns [] + a
  *  reason string so a missing/unfunded read tier is surfaced, not swallowed. */
@@ -121,13 +98,13 @@ async function searchRecent(
   creds: OAuth1Creds,
   query: string,
   maxResults: number,
-): Promise<{ candidates: Candidate[]; error?: string }> {
+): Promise<{ candidates: (Candidate & SearchExtras)[]; error?: string }> {
   const base = "https://api.twitter.com/2/tweets/search/recent";
   const qp: Record<string, string> = {
     query,
     max_results: String(Math.min(Math.max(maxResults, 10), 100)),
     expansions: "author_id",
-    "tweet.fields": "lang",
+    "tweet.fields": "lang,created_at,public_metrics",
     "user.fields": "username",
   };
   // Encode the URL with the SAME percent-encoding as the OAuth signature base
@@ -165,13 +142,16 @@ async function searchRecent(
       users[u.id] = u.username;
     }
   }
-  const candidates: Candidate[] = [];
+  const candidates: (Candidate & SearchExtras)[] = [];
   for (const tw of data?.data ?? []) {
     if (!tw || typeof tw.id !== "string" || typeof tw.text !== "string") continue;
     candidates.push({
       id: tw.id,
       authorHandle: users[tw.author_id] ?? "",
       text: tw.text,
+      createdAt: typeof tw.created_at === "string" ? tw.created_at : undefined,
+      likeCount: typeof tw.public_metrics?.like_count === "number" ? tw.public_metrics.like_count : undefined,
+      replyCount: typeof tw.public_metrics?.reply_count === "number" ? tw.public_metrics.reply_count : undefined,
     });
   }
   return { candidates };
@@ -217,45 +197,6 @@ async function draftReply(
   return typeof block?.text === "string" ? block.text : null;
 }
 
-// ---- X reply (write) --------------------------------------------------------
-
-async function postReply(
-  creds: OAuth1Creds,
-  text: string,
-  inReplyToId: string,
-): Promise<{ ok: true; id: string } | { ok: false; detail: string }> {
-  const url = "https://api.twitter.com/2/tweets";
-  const nonce = hex(crypto.getRandomValues(new Uint8Array(16)));
-  const ts = Math.floor(Date.now() / 1000);
-  const auth = await buildOAuth1Header("POST", url, creds, nonce, ts);
-  let res: Response;
-  try {
-    res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: auth, "Content-Type": "application/json" },
-      body: JSON.stringify({ text, reply: { in_reply_to_tweet_id: inReplyToId } }),
-      signal: AbortSignal.timeout(20_000),
-    });
-  } catch {
-    return { ok: false, detail: "network error or timeout" };
-  }
-  let data: any = null;
-  try {
-    data = await res.json();
-  } catch {
-    /* handled below */
-  }
-  if (!res.ok) {
-    const detail =
-      (data && (data.title || data.detail || data.error)) ||
-      `X API returned ${res.status}`;
-    return { ok: false, detail: String(detail).slice(0, 200) };
-  }
-  const id = data?.data?.id;
-  if (typeof id !== "string") return { ok: false, detail: "X response missing tweet id" };
-  return { ok: true, id };
-}
-
 // ---- KV helpers -------------------------------------------------------------
 
 async function readRecentReplies(kv: KVNamespace): Promise<string[]> {
@@ -269,19 +210,16 @@ async function readRecentReplies(kv: KVNamespace): Promise<string[]> {
   }
 }
 
-async function appendRecentReply(kv: KVNamespace, recent: string[], text: string) {
-  const next = [normalizeText(text), ...recent].slice(0, RECENT_REPLIES_KEPT);
-  try {
-    await kv.put(xReplyRecentKey(), JSON.stringify(next), { expirationTtl: RECENT_TTL_S });
-  } catch {
-    /* non-fatal */
-  }
-}
-
 interface DigestEntry {
   id: string;
   authorHandle: string;
-  status: "sent" | "skipped" | "would_send";
+  url?: string;
+  postedAtJst?: string | null;
+  likes?: number | null;
+  replies?: number | null;
+  textHead?: string;
+  via?: string;
+  status: "candidate" | "skipped";
   reply?: string;
   reason?: string;
 }
@@ -305,6 +243,14 @@ async function appendDigest(kv: KVNamespace, now: Date, entries: DigestEntry[]) 
     });
   } catch {
     /* non-fatal */
+  }
+  // Presentation-based dedup: a listed id is held out for 7 days (SEEN_TTL_S).
+  for (const e of entries) {
+    try {
+      await kv.put(xReplySeenKey(e.id), "1", { expirationTtl: SEEN_TTL_S });
+    } catch {
+      /* non-fatal */
+    }
   }
 }
 
@@ -345,7 +291,14 @@ async function handlePost(context: PagesContext): Promise<Response> {
     return finish(json({ error: "Invalid or missing publish token.", code: "unauthorized" }, 401));
   }
 
-  // 3. Credentials + config.
+  // 3. L0-1: sending is severed at code level — no POST /2/tweets code exists below (not a flag).
+  if (body?.dry_run !== true) {
+    return finish(
+      json({ error: 'Sending is disabled. Call with {"dry_run": true} — this endpoint only lists reply candidates.', code: "send_disabled" }, 400),
+    );
+  }
+
+  // 4. Credentials + config.
   const creds: OAuth1Creds = {
     consumerKey: env.X_API_KEY ?? "",
     consumerSecret: env.X_API_SECRET ?? "",
@@ -365,38 +318,12 @@ async function handlePost(context: PagesContext): Promise<Response> {
   }
   const model = env.X_REPLY_MODEL || MODEL;
   const ngWords = (env.X_REPLY_NG_WORDS ?? "").split(",").map((w) => w.trim()).filter(Boolean);
-  const dailyCap = (() => {
-    const n = parseInt(env.X_REPLY_DAILY_CAP ?? "", 10);
-    return Number.isFinite(n) && n > 0 ? n : DEFAULT_REPLY_DAILY_CAP;
-  })();
-  const dryRun = body?.dry_run === true;
-  // Per-run send ceiling — lets a scheduled trigger send a few at a time
-  // instead of emptying the whole daily budget in one burst (burst = bot
-  // signal). Defaults to the daily budget when unset. Never exceeds it.
-  const perRunCap = (() => {
-    const n = parseInt(String(body?.max_sends ?? ""), 10);
-    return Number.isFinite(n) && n > 0 ? Math.min(n, dailyCap) : dailyCap;
-  })();
-
-  // 4. Daily cap (UTC). Read-modify-write; a dropped increment at this scale
-  // only ever UNDER-counts (sends fewer), which is the safe direction.
-  let sentToday = 0;
-  try {
-    sentToday = parseInt((await kv.get(xReplyCountKey(now))) ?? "0", 10) || 0;
-  } catch {
-    sentToday = 0;
-  }
-  let budget = Math.max(0, dailyCap - sentToday);
-  if (!dryRun && budget === 0) {
-    return finish(
-      json({ error: "Daily reply cap reached.", code: "rate_limit", sentToday, dailyCap }, 429),
-      { considered: 0, sent: 0 },
-    );
-  }
 
   // 5. Gather candidates: explicit targets, else live search (paid tier).
+  // meta rides beside the Candidate shape (filterCandidates drops extras).
   let rawCandidates: unknown[] = [];
   let searchError: string | undefined;
+  const meta = new Map<string, SearchExtras & { query?: string }>();
   if (Array.isArray(body?.targets) && body.targets.length > 0) {
     rawCandidates = body.targets as unknown[];
   } else {
@@ -407,6 +334,11 @@ async function handlePost(context: PagesContext): Promise<Response> {
     for (const q of queries) {
       const r = await searchRecent(creds, q, perQuery);
       if (r.error) searchError = r.error;
+      for (const c of r.candidates) {
+        if (!meta.has(c.id)) {
+          meta.set(c.id, { createdAt: c.createdAt, likeCount: c.likeCount, replyCount: c.replyCount, query: q });
+        }
+      }
       rawCandidates.push(...r.candidates);
     }
   }
@@ -436,42 +368,52 @@ async function handlePost(context: PagesContext): Promise<Response> {
         {
           ok: true,
           considered: 0,
-          sent: 0,
+          listed: 0,
           skipped: 0,
-          dryRun,
           ...(searchError ? { searchError } : {}),
           note:
             rawCandidates.length === 0 && searchError
               ? "No candidates — search returned an error (read tier may be unfunded)."
-              : "No fresh candidates to reply to.",
+              : "No fresh candidates.",
         },
         200,
       ),
-      { considered: 0, sent: 0, ...(searchError ? { search_error: true } : {}) },
+      { considered: 0, listed: 0, ...(searchError ? { search_error: true } : {}) },
     );
   }
 
-  // 7. Per candidate: draft → guardrails → idempotency → send.
+  const entryBase = (c: Candidate) => {
+    const m = meta.get(c.id);
+    const posted = m?.createdAt ? Date.parse(m.createdAt) : NaN;
+    return {
+      id: c.id,
+      authorHandle: c.authorHandle,
+      url: c.authorHandle
+        ? `https://x.com/${c.authorHandle}/status/${c.id}`
+        : `https://x.com/i/web/status/${c.id}`,
+      postedAtJst: Number.isFinite(posted)
+        ? `${new Date(posted + 9 * 3600_000).toISOString().slice(0, 16).replace("T", " ")} JST`
+        : null,
+      likes: m?.likeCount ?? null,
+      replies: m?.replyCount ?? null,
+      textHead: [...c.text].slice(0, 80).join(""), // raw slice, no summarisation
+      via: m?.query ? `query:${m.query}` : "targets", // which existing gate surfaced it
+    };
+  };
+
+  // 7. Per candidate: draft → guardrails → list. (No send path exists.)
   const digest: DigestEntry[] = [];
   const results: Array<Record<string, unknown>> = [];
-  let sent = 0;
+  let listed = 0;
   let skipped = 0;
   const localRecent = [...recentReplies]; // grows within the run to dedup peers
 
   for (const c of candidates) {
-    if (!dryRun && (budget <= 0 || sent >= perRunCap)) {
-      const reason = budget <= 0 ? "daily_cap_reached" : "per_run_cap_reached";
-      results.push({ id: c.id, status: "skipped", reason });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reason });
-      skipped++;
-      continue;
-    }
-
     const rawDraft = await draftReply(anthropicKey, model, c);
     const parsed = rawDraft ? parseReplyDraft(rawDraft) : null;
     if (parsed === null) {
       results.push({ id: c.id, status: "skipped", reason: "no_usable_draft" });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reason: "no_usable_draft" });
+      digest.push({ ...entryBase(c), status: "skipped", reason: "no_usable_draft" });
       skipped++;
       continue;
     }
@@ -479,53 +421,17 @@ async function handlePost(context: PagesContext): Promise<Response> {
     const guard = validateReplyText(parsed.reply, { recentReplies: localRecent, ngWords });
     if (!guard.ok) {
       results.push({ id: c.id, status: "skipped", reason: guard.reason });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reply: parsed.reply, reason: guard.reason });
+      digest.push({ ...entryBase(c), status: "skipped", reply: parsed.reply, reason: guard.reason });
       skipped++;
       continue;
     }
 
-    if (dryRun) {
-      results.push({ id: c.id, status: "would_send", reply: parsed.reply });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "would_send", reply: parsed.reply });
-      localRecent.unshift(normalizeText(parsed.reply));
-      continue;
-    }
-
-    // Idempotency: same target + same normalized text can't post twice.
-    const idemKey = `xreply:idem:${await sha256Hex(replyIdempotencyPayload(c.id, parsed.reply))}`;
-    try {
-      if (await kv.get(idemKey)) {
-        results.push({ id: c.id, status: "skipped", reason: "duplicate" });
-        digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reason: "duplicate" });
-        skipped++;
-        continue;
-      }
-    } catch {
-      /* fail open — the seen marker below is the second line of defence */
-    }
-
-    const posted = await postReply(creds, parsed.reply, c.id);
-    if (!posted.ok) {
-      results.push({ id: c.id, status: "skipped", reason: `send_failed:${posted.detail}` });
-      digest.push({ id: c.id, authorHandle: c.authorHandle, status: "skipped", reply: parsed.reply, reason: `send_failed:${posted.detail}` });
-      skipped++;
-      continue;
-    }
-
-    // Success — record everything so we never touch this target again.
-    sent++;
-    budget--;
+    // Candidate. The draft rides along for W1 calibration only — the human
+    // writes their own reply in the X app.
+    results.push({ id: c.id, status: "candidate", reply: parsed.reply });
+    digest.push({ ...entryBase(c), status: "candidate", reply: parsed.reply });
+    listed++;
     localRecent.unshift(normalizeText(parsed.reply));
-    await appendRecentReply(kv, localRecent.slice(1), parsed.reply);
-    try {
-      await kv.put(idemKey, "1", { expirationTtl: IDEM_TTL_S });
-      await kv.put(xReplySeenKey(c.id), "1", { expirationTtl: SEEN_TTL_S });
-      await kv.put(xReplyCountKey(now), String(sentToday + sent), { expirationTtl: 3 * 24 * 3600 });
-    } catch {
-      /* counters are best-effort; the reply already posted */
-    }
-    results.push({ id: c.id, status: "sent", tweetId: posted.id, reply: parsed.reply });
-    digest.push({ id: c.id, authorHandle: c.authorHandle, status: "sent", reply: parsed.reply });
   }
 
   await appendDigest(kv, now, digest);
@@ -535,15 +441,14 @@ async function handlePost(context: PagesContext): Promise<Response> {
       {
         ok: true,
         considered: candidates.length,
-        sent,
+        listed,
         skipped,
-        dryRun,
         ...(searchError ? { searchError } : {}),
         results,
       },
       200,
     ),
-    { considered: candidates.length, sent, skipped, dry_run: dryRun },
+    { considered: candidates.length, listed, skipped },
   );
 }
 

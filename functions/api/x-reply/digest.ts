@@ -1,14 +1,11 @@
 /**
  * functions/api/x-reply/digest.ts
  *
- * GET /api/x-reply/digest — owner-only readout of what the reply-engine did
- * (strategy doc §5 "事後ダイジェスト": review sent/skipped replies to tune the
- * prompt, without a per-reply approval step). Read-only; gated by PUBLISH_TOKEN
- * exactly like /api/publish and /api/metrics.
- *
- * ?date=YYYY-MM-DD selects a day (defaults to today, UTC). Returns the KV
- * digest array written by x-reply/run.ts (each entry: id, authorHandle, status,
- * reply?, reason?) plus that day's send count.
+ * GET /api/x-reply/digest — owner-only reply-candidate list (L0-1: the human
+ * reads this, then replies by hand in the X app). Read-only; PUBLISH_TOKEN
+ * gated. ?date=YYYY-MM-DD selects a day (default today, UTC). Returns the KV
+ * digest array written by run.ts (each entry: id, authorHandle, url,
+ * postedAtJst, likes, replies, textHead, via, status, reply?, reason?).
  */
 
 import { timingSafeEqual } from "../_publish";
@@ -77,10 +74,10 @@ async function handleGet(context: PagesContext): Promise<Response> {
     sentCount = 0;
   }
 
-  const sent = entries.filter((e: any) => e?.status === "sent").length;
+  const candidates = entries.filter((e: any) => e?.status === "candidate").length;
   const skipped = entries.filter((e: any) => e?.status === "skipped").length;
 
-  return json({ date: day, sentCount, summary: { entries: entries.length, sent, skipped }, entries }, 200);
+  return json({ date: day, sentCount, summary: { entries: entries.length, candidates, skipped }, entries }, 200);
 }
 
 export async function onRequest(context: PagesContext): Promise<Response> {

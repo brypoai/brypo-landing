@@ -40,6 +40,14 @@ th { color:var(--muted); font-weight:400; font-size:12px; }
   color:var(--fg); border-radius:6px; font-size:16px; }
 #gate button { padding:10px 18px; background:var(--fg); color:var(--bg); border:0; border-radius:6px; font-size:15px; }
 #msg { color:var(--ng); font-size:14px; margin:10px 0; }
+.draft { border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:var(--panel); }
+.draft.note { color:var(--muted); font-size:14px; }
+.draft p { margin:0 0 10px; white-space:pre-wrap; }
+.draft .foot { display:flex; align-items:center; gap:12px; font-size:12px; color:var(--muted); }
+.draft .foot .over { color:var(--ng); }
+.draft button { margin-left:auto; padding:6px 12px; background:var(--fg); color:var(--bg);
+  border:0; border-radius:6px; font-size:13px; }
+.draft .angle { margin-top:10px; font-size:12px; color:var(--muted); }
 </style>
 </head>
 <body>
@@ -55,6 +63,9 @@ th { color:var(--muted); font-weight:400; font-size:12px; }
 <p id="msg"></p>
 
 <div id="cards"></div>
+
+<h2>今日の投稿</h2>
+<div id="post"></div>
 
 <h2>今日の実行</h2>
 <div id="checks"></div>
@@ -115,6 +126,51 @@ function renderWeeks(hist) {
   }).join('');
 }
 
+// --- 今日の投稿文案: GET /api/post-draft（サーバ側で JST 日ごとに1回だけ生成・KV キャッシュ） ---
+// 文案はモデル出力なので、必ずエスケープしてから innerHTML に載せる。
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+function renderPost(s) {
+  if (s.note || s.error) {
+    $('post').innerHTML = `<div class="draft note">${esc(s.note ?? `取得できません: ${s.error}`)}</div>`;
+    return;
+  }
+  const over = s.text.length > 140 ? ' class="over"' : '';
+  $('post').innerHTML = `<div class="draft"><p id="drafttext">${esc(s.text)}</p>` +
+    `<div class="foot"><span${over}>${s.text.length} / 140</span>` +
+    `<button id="copy">コピー</button></div>` +
+    `<div class="angle">${esc(s.angle)}</div></div>`;
+  $('copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(s.text);
+      $('copy').textContent = 'コピーした';
+    } catch {
+      // クリップボード API が使えない環境（フォーカス無し等）でも手詰まりに
+      // しない。本文を選択状態にして Ctrl/⌘+C に渡す。
+      const range = document.createRange();
+      range.selectNodeContents($('drafttext'));
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      $('copy').textContent = '選択した（Ctrl+C）';
+    }
+  });
+}
+
+async function loadDraft(token) {
+  renderPost({ note: '生成中…（1日1回だけ生成し、以降はキャッシュを返します）' });
+  let res;
+  try {
+    res = await fetch('/api/post-draft', { headers: { 'X-Publish-Token': token }, cache: 'no-store' });
+  } catch { renderPost({ error: '/api/post-draft に接続できませんでした' }); return; }
+  if (!res.ok) { renderPost({ error: `/api/post-draft が ${res.status} を返しました` }); return; }
+  let d;
+  try { d = await res.json(); } catch { renderPost({ error: '応答を解釈できませんでした' }); return; }
+  if (typeof d.text !== 'string' || !d.text) { renderPost({ error: d.reason || '本日の文案がありません' }); return; }
+  renderPost({ text: d.text, angle: d.angle ?? '' });
+}
+
 // --- 読み込み: GET /api/metrics を1回だけ。トークンはヘッダで送る（URL には絶対に載せない） ---
 function askToken(msg) { $('gate').style.display = 'block'; $('msg').textContent = msg; }
 
@@ -139,10 +195,12 @@ async function refresh(token) {
   save('l01.hist', hist);
   renderCards(v);
   renderWeeks(hist);
+  loadDraft(token);
 }
 
 renderCards(null);
 renderWeeks(load('l01.hist', {}));
+renderPost({ note: '—' });
 $('save').addEventListener('click', () => {
   const t = $('token').value.trim();
   if (!t) return;

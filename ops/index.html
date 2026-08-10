@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex,nofollow">
+<title>L0-1 出口条件</title>
+<!-- 毎日1画面で L0-1（2026-08-10〜09-07）の未達を確認するためだけの内部ページ。
+     指標は増やさない。読むのは既存の GET /api/metrics のみ（同一オリジン・読み取り専用）。
+     週次推移と実行チェックの状態は localStorage だけに置く（サーバ側に状態を作らない）。 -->
+<style>
+:root { --bg:#0a0a0f; --panel:#14141c; --fg:#f5f5f0; --muted:#8f8f99; --line:#1f1f2a; --ok:#3ba55d; --ng:#e8553b; }
+* { box-sizing:border-box; }
+body { margin:0; padding:20px 16px 48px; background:var(--bg); color:var(--fg);
+  font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP",sans-serif; }
+main { max-width:560px; margin:0 auto; }
+h1 { font-size:18px; margin:0 0 4px; }
+h2 { font-size:12px; letter-spacing:.08em; color:var(--muted); margin:30px 0 10px; }
+.days { margin:0 0 14px; color:var(--muted); font-size:14px; }
+.days b { color:var(--fg); font-size:22px; }
+.card { border:1px solid var(--line); border-left:4px solid var(--ng); border-radius:8px;
+  padding:12px 14px; background:var(--panel); margin-bottom:10px; }
+.card.ok { border-left-color:var(--ok); }
+.card .k { font-size:13px; color:var(--muted); }
+.card .v { font-size:28px; font-weight:700; line-height:1.2; color:var(--ng); }
+.card.ok .v { color:var(--ok); }
+.card .v small { font-size:15px; font-weight:400; color:var(--muted); }
+label.chk { display:flex; align-items:center; gap:10px; padding:12px 14px; border:1px solid var(--line);
+  border-radius:8px; margin-bottom:8px; cursor:pointer; background:var(--panel); }
+label.chk input { width:20px; height:20px; accent-color:var(--ok); }
+label.chk.on { color:var(--muted); text-decoration:line-through; }
+table { width:100%; border-collapse:collapse; font-size:14px; }
+th,td { padding:8px 4px; border-bottom:1px solid var(--line); text-align:right; }
+th:first-child,td:first-child { text-align:left; white-space:nowrap; }
+th { color:var(--muted); font-weight:400; font-size:12px; }
+.rng { color:var(--muted); font-size:12px; }
+#gate { display:none; border:1px solid var(--line); border-radius:8px; padding:14px;
+  background:var(--panel); font-size:14px; }
+#gate input { width:100%; padding:10px; margin:8px 0; background:var(--bg); border:1px solid var(--line);
+  color:var(--fg); border-radius:6px; font-size:16px; }
+#gate button { padding:10px 18px; background:var(--fg); color:var(--bg); border:0; border-radius:6px; font-size:15px; }
+#msg { color:var(--ng); font-size:14px; margin:10px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>L0-1 出口条件</h1>
+<p class="days">2026-09-07 まであと <b id="days">—</b> 日</p>
+
+<div id="gate">
+  <div>/api/metrics のトークン（この端末の localStorage にのみ保存）</div>
+  <input id="token" type="password" autocomplete="off">
+  <button id="save">保存して読み込む</button>
+</div>
+<p id="msg"></p>
+
+<div id="cards"></div>
+
+<h2>今日の実行</h2>
+<div id="checks"></div>
+
+<h2>週次推移</h2>
+<table>
+<thead><tr><th>週</th><th>使用者</th><th>リピート</th><th>フォロワー</th></tr></thead>
+<tbody id="weeks"></tbody>
+</table>
+</main>
+
+<script>
+const TZ = 'Asia/Tokyo', END = '2026-09-07';
+const GOALS = [['使用者（ユニーク）', 'u', 10], ['リピート（2回以上）', 'r', 3], ['X フォロワー', 'f', 100]];
+const WEEKS = [['W1', '2026-08-10', '2026-08-16'], ['W2', '2026-08-17', '2026-08-23'],
+               ['W3', '2026-08-24', '2026-08-30'], ['W4', '2026-08-31', '2026-09-07']];
+const CHECKS = [['post', '投稿した'], ['reply', '返信10件'], ['follow', 'フォローした']];
+const $ = (id) => document.getElementById(id);
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } };
+const save = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+// 日付はすべて JST 基準（UTC で日付を出すと 09:00 前に前日扱いになる）。
+const today = new Date().toLocaleDateString('sv-SE', { timeZone: TZ });
+
+$('days').textContent = Math.max(0, Math.round((Date.parse(END) - Date.parse(today)) / 864e5));
+
+// --- 今日の実行チェック（手入力のみ・日付が変われば未チェックで始まる） ---
+const saved = load('l01.checks', {});
+const state = saved.date === today ? saved : { date: today };
+$('checks').innerHTML = CHECKS.map(([k, label]) =>
+  `<label class="chk"><input type="checkbox" data-k="${k}"><span>${label}</span></label>`).join('');
+for (const el of document.querySelectorAll('#checks input')) {
+  const sync = () => el.closest('label').classList.toggle('on', el.checked);
+  el.checked = !!state[el.dataset.k];
+  sync();
+  el.addEventListener('change', () => { state[el.dataset.k] = el.checked; sync(); save('l01.checks', state); });
+}
+
+// --- 3指標の現在値/目標値 ---
+function renderCards(v) {
+  $('cards').innerHTML = GOALS.map(([label, f, target]) => {
+    const n = v ? v[f] : null;
+    const ok = typeof n === 'number' && n >= target;
+    return `<div class="card${ok ? ' ok' : ''}"><div class="k">${label}</div>` +
+      `<div class="v">${typeof n === 'number' ? n : '—'} <small>/ ${target}</small></div></div>`;
+  }).join('');
+}
+
+// --- 週次推移: その週内に保存された最後の値を出す。無い週は「—」 ---
+function renderWeeks(hist) {
+  const dates = Object.keys(hist).sort();
+  const md = (d) => d.slice(5).replace('-', '/');
+  $('weeks').innerHTML = WEEKS.map(([name, from, to]) => {
+    const last = dates.filter((d) => d >= from && d <= to).pop();
+    const v = last ? hist[last] : null;
+    const cell = (f) => (v && typeof v[f] === 'number' ? v[f] : '—');
+    return `<tr><td>${name} <span class="rng">${md(from)}–${md(to)}</span></td>` +
+      `<td>${cell('u')}</td><td>${cell('r')}</td><td>${cell('f')}</td></tr>`;
+  }).join('');
+}
+
+// --- 読み込み: GET /api/metrics を1回だけ。トークンはヘッダで送る（URL には絶対に載せない） ---
+function askToken(msg) { $('gate').style.display = 'block'; $('msg').textContent = msg; }
+
+async function refresh(token) {
+  $('msg').textContent = '';
+  let res;
+  try {
+    res = await fetch('/api/metrics', { headers: { 'X-Publish-Token': token }, cache: 'no-store' });
+  } catch { $('msg').textContent = '/api/metrics に接続できませんでした'; return; }
+  if (res.status === 401) {
+    localStorage.removeItem('l01.token');
+    askToken('トークンが無効です。入力し直してください。');
+    return;
+  }
+  if (!res.ok) { $('msg').textContent = `/api/metrics が ${res.status} を返しました`; return; }
+  const d = await res.json();
+  const v = { u: d.unique_try_users, r: d.repeat_try_users, f: d.x?.followers ?? null };
+  $('gate').style.display = 'none';
+  if (d.x?.error) $('msg').textContent = `フォロワー数を取得できません: ${d.x.error}`;
+  const hist = load('l01.hist', {});
+  hist[today] = v;
+  save('l01.hist', hist);
+  renderCards(v);
+  renderWeeks(hist);
+}
+
+renderCards(null);
+renderWeeks(load('l01.hist', {}));
+$('save').addEventListener('click', () => {
+  const t = $('token').value.trim();
+  if (!t) return;
+  localStorage.setItem('l01.token', t);
+  $('token').value = '';
+  refresh(t);
+});
+$('token').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('save').click(); });
+const token = localStorage.getItem('l01.token');
+if (token) refresh(token); else askToken('');
+</script>
+</body>
+</html>

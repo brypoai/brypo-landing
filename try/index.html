@@ -1573,6 +1573,15 @@ footer .copyright { text-transform: uppercase; }
 
   // ---- fetch ------------------------------------------------------------------
 
+  // L0-1: one anonymous UUID per browser. Blocked storage -> null (uncounted).
+  function tryClientId() {
+    try {
+      var id = localStorage.getItem('brypo_try_uid');
+      if (!id) { id = crypto.randomUUID(); localStorage.setItem('brypo_try_uid', id); }
+      return id;
+    } catch (e) { return null; }
+  }
+
   function fetchFormat(fmt) {
     state.running += 1;
     syncGenerateButton();
@@ -1583,7 +1592,8 @@ footer .copyright { text-transform: uppercase; }
         source_text: state.lastSourceText,
         format_type: fmt.key,
         cross_check: true,
-        language: state.lang
+        language: state.lang,
+        client_id: tryClientId()
       })
     }).then(function (res) {
       return res.json().catch(function () { return null; }).then(function (data) {

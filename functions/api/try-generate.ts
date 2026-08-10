@@ -36,6 +36,8 @@ import {
   HOURLY_IP_LIMIT,
   MAX_INPUT_CHARS,
   MODEL,
+  TRY_USERS_REPEAT_KEY,
+  TRY_USERS_TOTAL_KEY,
   buildCrossCheckUserMessage,
   computeCostUsd,
   crossCheckLanguageDirective,
@@ -43,8 +45,10 @@ import {
   flattenContentStrings,
   hourlyRateKey,
   isFormatType,
+  jstDateKey,
   languageDirective,
   parseJsonObject,
+  planTryCount,
   sanitizeFlags,
   stripFences,
   toLanguage,
@@ -186,6 +190,9 @@ async function ipHash16(ip: string): Promise<string> {
 
 const DAILY_KEY_TTL_S = 3 * 24 * 3600;
 const RATE_KEY_TTL_S = 2 * 3600;
+// try:u:{uuid} record TTL — must outlive the 2026-09-07 L0-1 exit gate.
+const TRY_USER_TTL_S = 120 * 24 * 3600;
+const CLIENT_ID_RE = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 async function accumulateSpend(kv: KVNamespace, now: Date, costUsd: number) {
   // Read-modify-write; concurrent requests can drop an increment (KV has
@@ -194,6 +201,20 @@ async function accumulateSpend(kv: KVNamespace, now: Date, costUsd: number) {
   const dayRaw = await kv.get(dayKey);
   const day = (parseFloat(dayRaw ?? "0") || 0) + costUsd;
   await kv.put(dayKey, day.toFixed(6), { expirationTtl: DAILY_KEY_TTL_S });
+}
+
+// L0-1 unique/repeat user counters. RMW races collapse on the counter write
+// (the five parallel format requests all compute the same n+1) — same
+// acceptance stance as spend above.
+async function recordTryUser(kv: KVNamespace, clientId: string, now: Date) {
+  const key = `try:u:${clientId}`;
+  const plan = planTryCount(await kv.get(key), jstDateKey(now));
+  if (plan === null) return; // same JST day — nothing to write
+  await kv.put(key, JSON.stringify(plan.record), { expirationTtl: TRY_USER_TTL_S });
+  const bump = async (k: string) =>
+    kv.put(k, String((parseInt((await kv.get(k)) ?? "0", 10) || 0) + 1));
+  if (plan.incrTotal) await bump(TRY_USERS_TOTAL_KEY);
+  if (plan.incrRepeat) await bump(TRY_USERS_REPEAT_KEY);
 }
 
 // ---- handler -------------------------------------------------------------------
@@ -308,6 +329,9 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
   // Output language (日英両対応). Defaults to English so existing callers
   // that never send `language` keep their original behaviour.
   const lang: Language = toLanguage(body?.language);
+  // L0-1 measurement: anonymous client-generated UUID, or null (not counted).
+  const clientId =
+    typeof body?.client_id === "string" && CLIENT_ID_RE.test(body.client_id) ? body.client_id : null;
 
   // 3. Daily budget gate (UTC day). KV failures fail OPEN: availability
   // of the free tool wins, and the Anthropic key's own $50/mo spend
@@ -477,6 +501,10 @@ async function handlePost(context: PagesContext, t0: number): Promise<Response> 
     responseBody.content = content;
   }
 
+  // Count off the response path (waitUntil): failures never surface.
+  if (clientId) {
+    context.waitUntil(recordTryUser(env.TRY_KV, clientId, now).catch(() => {}));
+  }
   return finish(json(responseBody, 200), formatType, inputTokens, outputTokens, {
     schema_fallback: schemaFallback,
     cross_check_skipped: crossCheckSkipped,

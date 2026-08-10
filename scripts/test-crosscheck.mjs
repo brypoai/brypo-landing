@@ -41,7 +41,9 @@ import {
   dailyUsageKey,
   flattenContentStrings,
   hourlyRateKey,
+  jstDateKey,
   parseJsonObject,
+  planTryCount,
   sanitizeFlags,
   stripFences,
   CONTENT_VALIDATORS,
@@ -183,6 +185,25 @@ t("KV key builders are UTC-stable", () => {
   const d = new Date("2026-07-02T23:59:59Z");
   eq(dailyUsageKey(d), "usage:2026-07-02");
   eq(hourlyRateKey("abcdef0123456789", d), "ip:abcdef0123456789:2026070223");
+});
+
+console.log("unit: /try user counters (L0-1, JST)");
+t("jstDateKey flips the day at 15:00 UTC", () => {
+  eq(jstDateKey(new Date("2026-08-10T14:59:59Z")), "2026-08-10");
+  eq(jstDateKey(new Date("2026-08-10T15:00:00Z")), "2026-08-11");
+});
+t("planTryCount: total on 1st sight, repeat on 2nd day only", () => {
+  const [d1, d2, d3] = ["2026-08-10", "2026-08-11", "2026-08-12"];
+  const first = planTryCount(null, d1);
+  eq(first, { record: { f: d1, l: d1 }, incrTotal: true, incrRepeat: false });
+  const stored = JSON.stringify(first.record);
+  eq(planTryCount(stored, d1), null, "same JST day");
+  const second = planTryCount(stored, d2);
+  eq(second, { record: { f: d1, l: d2 }, incrTotal: false, incrRepeat: true });
+  const day3 = planTryCount(JSON.stringify(second.record), d3);
+  eq([day3.incrTotal, day3.incrRepeat, day3.record.l], [false, false, d3], "3rd day");
+  const corrupt = planTryCount("garbage", d1);
+  eq([corrupt.incrTotal, corrupt.incrRepeat], [false, false], "corrupt re-baseline");
 });
 
 console.log("unit: content validators");

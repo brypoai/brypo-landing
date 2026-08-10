@@ -18,7 +18,7 @@
 
 import { buildOAuth1Header, timingSafeEqual } from "./_publish";
 import type { OAuth1Creds } from "./_publish";
-import { dailyUsageKey, publishUsageKey } from "./_lib";
+import { TRY_USERS_REPEAT_KEY, TRY_USERS_TOTAL_KEY, dailyUsageKey, publishUsageKey } from "./_lib";
 import { buildMetricsLogLine } from "./_metrics";
 import type { MetricsSnapshot } from "./_metrics";
 
@@ -168,7 +168,7 @@ async function handleGet(context: PagesContext): Promise<Response> {
     !!env.X_API_KEY && !!env.X_API_SECRET && !!env.X_ACCESS_TOKEN && !!env.X_ACCESS_TOKEN_SECRET;
 
   // The three sources are independent — fetch them concurrently.
-  const [x, waitlist, publishCountToday, spendUsdToday] = await Promise.all([
+  const [x, waitlist, publishCountToday, spendUsdToday, uniqueTryUsers, repeatTryUsers] = await Promise.all([
     haveX
       ? fetchXFollowers({
           consumerKey: env.X_API_KEY!,
@@ -186,6 +186,8 @@ async function handleGet(context: PagesContext): Promise<Response> {
       : Promise.resolve<number | null>(null),
     readKvNumber(env.TRY_KV, publishUsageKey(now)),
     readKvNumber(env.TRY_KV, dailyUsageKey(now)),
+    readKvNumber(env.TRY_KV, TRY_USERS_TOTAL_KEY),
+    readKvNumber(env.TRY_KV, TRY_USERS_REPEAT_KEY),
   ]);
 
   const snapshot: MetricsSnapshot = {
@@ -209,8 +211,11 @@ async function handleGet(context: PagesContext): Promise<Response> {
   return json(
     {
       ...snapshot,
-      // Ready-to-paste docs/METRICS_LOG.md row.
-      logLine: buildMetricsLogLine(snapshot),
+      unique_try_users: uniqueTryUsers,
+      repeat_try_users: repeatTryUsers,
+      // Ready-to-paste docs/METRICS_LOG.md row — the L0-1 counters ride the
+      // free-text 備考 cell so the table shape stays intact.
+      logLine: buildMetricsLogLine(snapshot, `try_u=${uniqueTryUsers} try_r=${repeatTryUsers}`),
       notes,
     },
     200,

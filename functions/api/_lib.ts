@@ -465,3 +465,32 @@ export function hourlyRateKey(ipHash16: string, now: Date): string {
 export function publishUsageKey(now: Date): string {
   return `publish:${now.toISOString().slice(0, 10)}`;
 }
+
+// ---- /try per-user counters (L0-1, JST) -------------------------------------
+
+/** Calendar date in JST (UTC+9, no DST), YYYY-MM-DD — L0-1 counts days in JST. */
+export function jstDateKey(now: Date): string {
+  return new Date(now.getTime() + 9 * 3600_000).toISOString().slice(0, 10);
+}
+
+/** Lifetime unique / repeat /try user counters (the L0-1 exit metrics). */
+export const TRY_USERS_TOTAL_KEY = "try:users:total";
+export const TRY_USERS_REPEAT_KEY = "try:users:repeat";
+
+/**
+ * Plan what a successful /try generation writes to KV, from the stored
+ * try:u:{uuid} JSON ({f,l} = first/last JST date; null = first sight, count
+ * it; corrupt = re-baseline, don't count). Returns null on a same-day repeat
+ * — nothing to write, which also collapses the page's five parallel format
+ * requests into one count. incrRepeat fires on the 2nd distinct day only.
+ */
+export function planTryCount(raw: string | null, today: string):
+  { record: { f: string; l: string }; incrTotal: boolean; incrRepeat: boolean } | null {
+  let r: any = null;
+  try { r = raw === null ? null : JSON.parse(raw); } catch { /* corrupt */ }
+  if (!r || typeof r.f !== "string" || typeof r.l !== "string") {
+    return { record: { f: today, l: today }, incrTotal: raw === null, incrRepeat: false };
+  }
+  if (r.l === today) return null;
+  return { record: { f: r.f, l: today }, incrTotal: false, incrRepeat: r.f === r.l };
+}

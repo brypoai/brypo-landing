@@ -1,7 +1,7 @@
 # .github/workflows/x-reply.yml
 #
 # Daily driver for the X reply-CANDIDATE lister (@kokibuilds). POSTs
-# {"dry_run": true} + lang:ja queries once a day; the endpoint only lists
+# {"dry_run": true} + lang:ja queries twice a day (07:00 / 22:00 JST); the endpoint only lists
 # candidates into the digest — no drafting (Anthropic call removed 2026-08-10)
 # and it never posts to X (send path severed at code level 2026-08-10;
 # non-dry_run gets 400). The human replies in the X app. Afterwards one ntfy
@@ -15,6 +15,8 @@ on:
   schedule:
     # 22:00 UTC = 07:00 JST (next morning), daily. Best-effort; minute may drift.
     - cron: "0 22 * * *"
+    # 13:00 UTC = 22:00 JST — evening pass so the 20-24 JST cluster isn't pushed out by MAX_PER_RUN.
+    - cron: "0 13 * * *"
 
 permissions: {}
 
@@ -32,11 +34,11 @@ jobs:
         run: |
           set -euo pipefail
           [ -z "${TOKEN}" ] && { echo "PUBLISH_TOKEN not set — skipping."; exit 0; }
-          # lang:ja discovery queries (2026-08-10). Tuning is a follow-up task.
+          # lang:ja discovery queries (tuned 2026-08-10 after first 25-item run).
           BODY=$(jq -n '{dry_run: true, queries: [
             "\"個人開発\" (リリース OR 公開 OR 作った) -is:retweet -is:reply lang:ja",
-            "\"個人開発\" (進捗 OR ユーザー OR 収益) -is:retweet -is:reply lang:ja",
-            "\"作ってる\" (SaaS OR アプリ OR ツール) -is:retweet -is:reply lang:ja"
+            "\"個人開発\" (進捗 OR ユーザー OR ローンチ) -副業 -投資 -is:retweet -is:reply lang:ja",
+            "\"#個人開発\" -is:retweet -is:reply lang:ja"
           ]}')
           echo "POST /api/x-reply/run  body=${BODY}"
           code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \

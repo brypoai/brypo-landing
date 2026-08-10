@@ -46,6 +46,15 @@ X_REPLY_NG_WORDS=
 # Override the drafting model. Optional; defaults to the /try model (Haiku).
 X_REPLY_MODEL=
 
+# ---- /api/post-draft (owner-only daily X post draft, shown on /ops) ----------
+# Reuses PUBLISH_TOKEN (gate), ANTHROPIC_API_KEY_TRY (drafting, shared $50/mo
+# cap) and DAILY_BUDGET_USD (same daily gate /try enforces). One generation per
+# JST day, cached in TRY_KV; nothing is ever sent — the draft is display-only.
+# To turn it off, unset ANTHROPIC_API_KEY_TRY (/ops then prints that as the
+# reason). Note that also turns off /try generation — they share the key.
+# Override the drafting model. Optional; defaults to claude-opus-5.
+POST_DRAFT_MODEL=
+
 # ---- /api/metrics (owner-only KPI snapshot) ----------------------------------
 # Tally API key (Tally → Settings → API keys) for the waitlist signup count.
 # Optional: unset → the waitlist column stays a fill-by-hand cell.

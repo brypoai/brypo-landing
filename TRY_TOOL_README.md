@@ -242,6 +242,38 @@ stderr, the single Markdown row to stdout. Unlike `/api/publish`, this
 endpoint has no daily cap or `PUBLISH_ENABLED` gate (read-only); the constant-
 time `PUBLISH_TOKEN` check is the only guard.
 
+## Daily post draft (`/api/post-draft`) — the /ops「今日の投稿」欄
+
+Owner-gated draft of one X post per day, rendered on `/ops`. `GET
+/api/post-draft` with header `X-Publish-Token: <PUBLISH_TOKEN>` (same token as
+publish and metrics; no new secret) returns `{ date, text, angle, cached }`.
+
+- **One generation per JST day**, cached in `TRY_KV` under
+  `postdraft:YYYY-MM-DD`. The first `/ops` load of the day pays for the call
+  (~7s); every later load that day is a KV read (~5ms). `postdraft:recent`
+  keeps the last 7 angles and feeds them back so consecutive days differ.
+- **Spend**: uses `ANTHROPIC_API_KEY_TRY` — the same key and the same $50/mo
+  Console limit as `/try` — and books the cost into the same
+  `usage:YYYY-MM-DD` counter, gated by `DAILY_BUDGET_USD` **before** calling.
+  Cost is booked at the drafting model's own rates (`_postdraft.ts`), not
+  `/try`'s Haiku rates, so the shared cap stays honest. Model defaults to
+  `claude-opus-5`; override with the optional `POST_DRAFT_MODEL` var.
+  One call/day at ~1.2k in / 400 out ≈ $0.02/day.
+- **No send path.** The draft is displayed for the owner to copy; the severed
+  `/2/tweets` path (L0-1) stays severed. To turn drafting off, unset
+  `ANTHROPIC_API_KEY_TRY` — `/ops` then prints that as the reason (note this
+  also disables `/try` generation; they share the key).
+- **No injection surface**: the prompt is built only from first-party values
+  (JST date, the L0-1 KV counters, our own previous angles). No third-party
+  text ever reaches the model — that is what makes this a different shape from
+  the reply drafting removed in #23, which read other people's posts. The
+  prompt also forbids inventing any number not passed in.
+- Expected-unavailable states (no key, no KV binding, budget exhausted) return
+  **200 with `text: null` and a `reason`**, so `/ops` prints one honest line
+  rather than an empty box. Bad token → 401, upstream/parse failure → 502.
+- Pure helpers live in `functions/api/_postdraft.ts`; unit tests in
+  `scripts/test-postdraft.mjs` (`npm run test:postdraft`, in `npm test`).
+
 ## Reply engine (`/api/x-reply/*`) — growth (distribution)
 
 Owner-gated auto-reply engine for @kokibuilds growth (strategy: dev-env

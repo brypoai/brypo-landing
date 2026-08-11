@@ -420,6 +420,12 @@ brypo docs/18 §3 C-5). Audited at brypo `c7573c2` ⇄ landing `0898df3`.
    `sourceText` raw (the repo's only unguarded LLM input path).
    Now: `GENERATION_INJECTION_GUARD` suffix + `<<<FOUNDER_NOTES>>>`
    delimiters, matching the app's `GENERATION_INJECTION_GUARD` posture.
+   **Closing-delimiter neutralization (2026-08-11)**: a delimiter only holds if
+   the wrapped text cannot forge its CLOSING token, so both the pasted text and
+   the generated document now pass through `sanitizeDelimiters` (`_lib.ts`) at
+   assembly time — a pasted `FOUNDER_NOTES>>>`, or a bare `>>>` line closing the
+   cross-check's unnamed blocks, no longer escapes into instruction context. The
+   prompt bodies are byte-unchanged (fingerprints hold; no live re-tune needed).
 2. **B-7 display tiering** — all flags used to render with equal weight;
    `unsupported` + low-confidence flags are the dominant false-positive
    source (the exact B-7 insight). Now: `isCriticalFlag` = `contradicted`

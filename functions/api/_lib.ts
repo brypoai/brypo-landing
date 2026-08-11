@@ -415,10 +415,61 @@ export function sanitizeFlags(
   return { flags, cross_check_skipped: false, skip_reason: null };
 }
 
+// ---- delimiter sanitizing (prompt-injection: closing-token escape) ---------
+
+// Zero-width space, written as an escape so no invisible character is ever
+// embedded in this source file (a raw U+200B here would be unreviewable).
+const ZWSP = "\u200B";
+
+/**
+ * Neutralize any text that could CLOSE one of our `<<< ... >>>` data blocks.
+ *
+ * The threat: every LLM call in this repo wraps untrusted text in a delimiter
+ * block and tells the model that everything inside is DATA, never instructions
+ * (_prompts.ts CROSS_CHECK rule 5 / GENERATION_INJECTION_GUARD). On /try the
+ * author of that text IS the attacker — anyone can paste anything into a public
+ * endpoint — so a pasted `>>>` line (or `FOUNDER_NOTES>>>`) forged the end of
+ * the block and everything after it read as top-level instructions. The
+ * cross-check blocks were the worst case: their closer is a BARE `>>>`, so no
+ * block name had to be guessed. The generated document is in scope too, since
+ * it is derived from the same pasted text.
+ *
+ * The fix inserts a zero-width space between the `>` characters of every run of
+ * three or more, so no contiguous `>>>` survives — neither the named closer
+ * (`FOUNDER_NOTES>>>`, `TARGET>>>`) nor the bare one (a `>>>` line, which is
+ * what the cross-check blocks close with, including at the very start of the
+ * text where the block's own `<<<\n` supplies the newline). One rule instead of
+ * a list of shapes, so there is no "which position counts" gap to reason about.
+ * The text still reads identically to the model (and to a human, if it is ever
+ * echoed back) — a zero-width space renders as nothing.
+ *
+ * Deliberately NOT done: naming the cross-check blocks (`<<<SOURCE_TEXT`) or
+ * otherwise hardening the delimiters in the prompts themselves. The prompt
+ * bodies in _prompts.ts are fingerprinted by scripts/prompt-drift-check.mjs and
+ * tuned against the live matrix; changing their wording would force a
+ * re-baseline plus a live re-tune for a problem that is fully solvable at the
+ * user-message assembly layer. Only call sites change here.
+ *
+ * Fires only when a `>>>` run is present, so ordinary input — including text
+ * using one or two `>` (quotes, arrows) — comes back as the same string.
+ */
+export function sanitizeDelimiters(text: string): string {
+  // Fast path: no closing token anywhere → return the input untouched.
+  if (!text.includes(">>>")) return text;
+  return text.replace(/>{3,}/g, (run) => run.split("").join(ZWSP));
+}
+
 /**
  * Build the cross-check user message. Lives here (not in the handler) so
  * the tuning harness (scripts/test-crosscheck.mjs) exercises the exact
  * shipped string — a drifted copy would silently stop testing production.
+ *
+ * Both texts are untrusted (the source is pasted; the output is generated FROM
+ * the pasted text) and both blocks close with a bare `>>>`, so both go through
+ * sanitizeDelimiters. Note the verbatim claim guard in sanitizeFlags still
+ * compares against the UNSANITIZED flattened text: a flag whose claim happens
+ * to span a neutralized `>>>` run is dropped rather than surfaced, which is the
+ * safe direction (the check never blocks a result).
  */
 export function buildCrossCheckUserMessage(
   sourceText: string,
@@ -426,9 +477,9 @@ export function buildCrossCheckUserMessage(
 ): string {
   return (
     `SOURCE TEXT (ground truth — the founder's pasted notes):\n` +
-    `<<<\n${sourceText}\n>>>\n\n` +
+    `<<<\n${sanitizeDelimiters(sourceText)}\n>>>\n\n` +
     `OUTPUT TEXT (generated document to check):\n` +
-    `<<<\n${outputText}\n>>>\n\n` +
+    `<<<\n${sanitizeDelimiters(outputText)}\n>>>\n\n` +
     `Return the flags JSON object.`
   );
 }

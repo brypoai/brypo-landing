@@ -48,6 +48,12 @@ th { color:var(--muted); font-weight:400; font-size:12px; }
 .draft button { margin-left:auto; padding:6px 12px; background:var(--fg); color:var(--bg);
   border:0; border-radius:6px; font-size:13px; }
 .draft .angle { margin-top:10px; font-size:12px; color:var(--muted); }
+.xr { border:1px solid var(--line); border-radius:8px; padding:12px 14px; background:var(--panel); margin-bottom:8px; }
+.xr p { margin:0 0 8px; white-space:pre-wrap; font-size:15px; }
+.xr .foot { display:flex; align-items:center; gap:12px; flex-wrap:wrap; font-size:12px; color:var(--muted); }
+.xr .foot a { margin-left:auto; padding:6px 12px; background:var(--fg); color:var(--bg);
+  border-radius:6px; font-size:13px; text-decoration:none; }
+.xr.note { color:var(--muted); font-size:14px; }
 </style>
 </head>
 <body>
@@ -66,6 +72,9 @@ th { color:var(--muted); font-weight:400; font-size:12px; }
 
 <h2>今日の投稿</h2>
 <div id="post"></div>
+
+<h2>返信候補 <span id="xrday" class="rng"></span></h2>
+<div id="xreply"></div>
 
 <h2>今日の実行</h2>
 <div id="checks"></div>
@@ -158,6 +167,58 @@ function renderPost(s) {
   });
 }
 
+// --- 返信候補: GET /api/x-reply/digest（トークンはヘッダ送信・URL には載せない） ---
+// digest の KV キーは **UTC 日**（_xreply.ts の xReplyDigestKey）。このページの
+// 他の日付は JST 基準なので、ここだけ UTC 日を使う。ntfy の通知リンクが渡す
+// ?date=（= ワークフローの date -u +%F）があればそれを優先する。
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+function xrTargetDay() {
+  const q = new URLSearchParams(location.search);
+  const d = q.get('xr') ?? q.get('date');
+  return d && DAY_RE.test(d) ? d : new Date().toISOString().slice(0, 10);
+}
+
+function renderXreply(s) {
+  if (s.note || s.error) {
+    $('xreply').innerHTML = `<div class="xr note">${esc(s.note ?? `取得できません: ${s.error}`)}</div>`;
+    return;
+  }
+  if (!s.entries.length) {
+    $('xreply').innerHTML = '<div class="xr note">この日の候補はありません。</div>';
+    return;
+  }
+  // entries はすべて外部（X）由来の文字列。必ずエスケープしてから innerHTML に載せる。
+  $('xreply').innerHTML = s.entries.map((e) => {
+    const meta = [
+      e.postedAtJst ? esc(e.postedAtJst) : null,
+      typeof e.likes === 'number' ? `♥ ${e.likes}` : null,
+      typeof e.replies === 'number' ? `↩ ${e.replies}` : null,
+      e.via ? esc(e.via) : null,
+    ].filter(Boolean).join(' · ');
+    const url = typeof e.url === 'string' && e.url.startsWith('https://x.com/') ? e.url : null;
+    const open = url
+      ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">X で開く</a>`
+      : '';
+    return `<div class="xr"><p>${esc(e.textHead ?? '')}</p>` +
+      `<div class="foot"><span>${meta}</span>${open}</div></div>`;
+  }).join('');
+}
+
+async function loadXreply(token) {
+  const day = xrTargetDay();
+  $('xrday').textContent = day;
+  renderXreply({ note: '読み込み中…' });
+  let res;
+  try {
+    res = await fetch(`/api/x-reply/digest?date=${day}`,
+      { headers: { 'X-Publish-Token': token }, cache: 'no-store' });
+  } catch { renderXreply({ error: '/api/x-reply/digest に接続できませんでした' }); return; }
+  if (!res.ok) { renderXreply({ error: `/api/x-reply/digest が ${res.status} を返しました` }); return; }
+  let d;
+  try { d = await res.json(); } catch { renderXreply({ error: '応答を解釈できませんでした' }); return; }
+  renderXreply({ entries: Array.isArray(d.entries) ? d.entries : [] });
+}
+
 async function loadDraft(token) {
   renderPost({ note: '生成中…（1日1回だけ生成し、以降はキャッシュを返します）' });
   let res;
@@ -196,11 +257,13 @@ async function refresh(token) {
   renderCards(v);
   renderWeeks(hist);
   loadDraft(token);
+  loadXreply(token);
 }
 
 renderCards(null);
 renderWeeks(load('l01.hist', {}));
 renderPost({ note: '—' });
+renderXreply({ note: '—' });
 $('save').addEventListener('click', () => {
   const t = $('token').value.trim();
   if (!t) return;

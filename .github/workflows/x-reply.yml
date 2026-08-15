@@ -64,6 +64,10 @@ jobs:
           [ -z "${NTFY_TOPIC}" ] && { echo "NTFY_TOPIC not set — skipping notify."; exit 0; }
           N=$(jq -r '.listed // 0' resp.json 2>/dev/null || echo 0)
           MSG="候補0件。TLから手動で10件"
-          [ "${N}" -gt 0 ] && MSG="今日の返信候補 ${N} 件 https://brypo.com/api/x-reply/digest?date=$(date -u +%F)" || true
+          # リンク先は API ではなく閲覧ページ /ops/。digest はトークンを
+          # X-Publish-Token ヘッダでしか受け取らないため、API URL を直接開くと
+          # ブラウザはヘッダを付けられず必ず 401 になる（2026-08-15 実地で確認）。
+          # /ops/ は保存済みトークンをヘッダに載せて fetch する。
+          [ "${N}" -gt 0 ] && MSG="今日の返信候補 ${N} 件 https://brypo.com/ops/?xr=$(date -u +%F)" || true
           curl -fsS -o /dev/null -H "Title: x-reply candidates" -H "Priority: default" \
             -d "${MSG}" "https://ntfy.sh/${NTFY_TOPIC}" || echo "notify: send failed"

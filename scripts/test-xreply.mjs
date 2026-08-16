@@ -18,6 +18,7 @@ import {
   SIMILARITY_THRESHOLD,
   MIN_TARGET_CHARS,
   DEFAULT_ICP_QUERIES,
+  DEFAULT_MUTED_TERMS,
   xReplyCountKey,
   xReplySeenKey,
   xReplyRecentKey,
@@ -302,6 +303,51 @@ t("defaults are sane", () => {
   assert(SIMILARITY_THRESHOLD > 0 && SIMILARITY_THRESHOLD <= 1, "threshold in range");
   assert(Array.isArray(DEFAULT_ICP_QUERIES) && DEFAULT_ICP_QUERIES.length > 0, "has ICP queries");
   assert(DEFAULT_ICP_QUERIES.every((q) => q.includes("-is:retweet")), "queries exclude retweets");
+});
+
+console.log("unit: default muted terms (2026-08-16 tuning)");
+t("drops the bot/aggregator posts measured on 2026-08-14", () => {
+  const pad = "x".repeat(MIN_TARGET_CHARS);
+  const raw = [
+    { id: "1", authorHandle: "a", text: `【TechFeedまとめ】2026-08-15 ${pad}` },
+    { id: "2", authorHandle: "b", text: `📝 noteに書いたよ「監視のウソ」${pad}` },
+    { id: "3", authorHandle: "c", text: `本日のばかやろう #AIart #個人開発 ${pad}` },
+    { id: "4", authorHandle: "d", text: `プレゼント企画やります ${pad}` },
+  ];
+  const kept = filterCandidates(raw, { mutedTerms: DEFAULT_MUTED_TERMS });
+  eq(kept.length, 0, "every measured bot pattern is muted");
+});
+
+t("keeps the posts that made the list worth reading", () => {
+  // 実測で「良い」と判定した 3 件。ミュート語がこれらを巻き込まないこと —
+  // 1 語で投稿ごと落とすので、誤爆は候補ゼロに直結する。
+  const raw = [
+    {
+      id: "1",
+      authorHandle: "oka",
+      text: "リリース四日目 売上:11,060円 広告収益:439円でした！コアファンの方に楽しんで貰えていて嬉しいです #個人開発",
+    },
+    {
+      id: "2",
+      authorHandle: "kk",
+      text: "多分もう5ヶ月ぐらいずーっと同じアプリを個人開発しているけど、手触りが全然気に入らなくて公開できてない。",
+    },
+    {
+      id: "3",
+      authorHandle: "koe",
+      text: "コエボックス の β版を公開しました。ユーザーからの要望や不具合報告を、もっと手軽に集められたらいいなという思いで作りました。 #個人開発",
+    },
+  ];
+  eq(filterCandidates(raw, { mutedTerms: DEFAULT_MUTED_TERMS }).length, 3);
+});
+
+t("muted terms are lowercase so the case-insensitive match actually fires", () => {
+  // filterCandidates は本文と語の両方を lowercase して比較する。大文字を
+  // 含む語を置くと永久に一致しない（#AIart を #aiart で持つ理由）。
+  for (const term of DEFAULT_MUTED_TERMS) {
+    assert(term === term.toLowerCase(), `muted term not lowercased: ${term}`);
+    assert(term.trim().length > 0, "muted term is blank");
+  }
 });
 
 // ---- summary ----------------------------------------------------------------

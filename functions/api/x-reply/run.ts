@@ -19,6 +19,7 @@ import {
   filterCandidates,
   toQueryString,
   xReplyDigestKey,
+  DEFAULT_MUTED_TERMS,
   xReplySeenKey,
 } from "../_xreply";
 import type { Candidate } from "../_xreply";
@@ -271,7 +272,13 @@ async function handlePost(context: PagesContext): Promise<Response> {
   // 6. Load anti-abuse state, filter, cap.
   const seen = new Set<string>();
   // Cheaply check the seen marker for each id we're about to consider.
-  const provisional = filterCandidates(rawCandidates, { selfHandle: "kokibuilds" });
+  // 同じ options で 2 回通す: seen 判定用の下見と本番で条件がズレると、
+  // ミュートされた候補の分だけ seen プローブが無駄に走る。
+  const filterOpts = {
+    selfHandle: "kokibuilds",
+    mutedTerms: DEFAULT_MUTED_TERMS,
+  };
+  const provisional = filterCandidates(rawCandidates, filterOpts);
   await Promise.all(
     provisional.map(async (c) => {
       try {
@@ -282,7 +289,7 @@ async function handlePost(context: PagesContext): Promise<Response> {
     }),
   );
   const candidates = filterCandidates(rawCandidates, {
-    selfHandle: "kokibuilds",
+    ...filterOpts,
     seen,
   }).slice(0, MAX_PER_RUN);
 

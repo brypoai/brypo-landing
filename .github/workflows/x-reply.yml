@@ -34,11 +34,16 @@ jobs:
         run: |
           set -euo pipefail
           [ -z "${TOKEN}" ] && { echo "PUBLISH_TOKEN not set — skipping."; exit 0; }
-          # lang:ja discovery queries (tuned 2026-08-10 after first 25-item run).
+          # lang:ja discovery queries (retuned 2026-08-16 against 49 measured
+          # candidates from 08-14: 31% were usable, and the bare "#個人開発"
+          # query produced most of the noise — bot digests, affiliate listicles
+          # and AI-art posts that merely carry the tag. Dropped it. The other
+          # two now ask for what actually read as build-in-public: a shipped
+          # thing, a number, or a stuck point someone can be answered about.)
           BODY=$(jq -n '{dry_run: true, queries: [
-            "\"個人開発\" (リリース OR 公開 OR 作った) -is:retweet -is:reply lang:ja",
-            "\"個人開発\" (進捗 OR ユーザー OR ローンチ) -副業 -投資 -is:retweet -is:reply lang:ja",
-            "\"#個人開発\" -is:retweet -is:reply lang:ja"
+            "\"個人開発\" (リリース OR 公開 OR ローンチ OR 出しました) -is:retweet -is:reply lang:ja",
+            "\"個人開発\" (売上 OR 収益 OR MRR OR ユーザー数 OR 継続率 OR 進捗) -副業 -投資 -せどり -is:retweet -is:reply lang:ja",
+            "(個人開発 OR インディーハッカー) (悩ん OR 詰まっ OR 迷っ OR どう思い) -is:retweet -is:reply lang:ja"
           ]}')
           echo "POST /api/x-reply/run  body=${BODY}"
           code=$(curl -sS -o resp.json -w '%{http_code}' -X POST \

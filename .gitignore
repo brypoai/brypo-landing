@@ -1,3 +1,6 @@
 node_modules/
 .wrangler/
 .dev.vars
+
+# claude — リモートセッションの一時出力
+.claude/tmp/

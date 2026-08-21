@@ -62,3 +62,14 @@ robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 - `main` への直接 push（PR 経由・CI green が必須）。`git push --force` は使わない
 - `package-lock.json` を手で編集しない
 - `.dev.vars` など実 secrets ファイルの読み取り・コミット
+
+## 6. リモート/クラウドセッション運用（claude.ai/code・スマホ発）
+
+`CLAUDE_CODE_REMOTE=true` のとき、claude.ai/code のクラウドコンテナ（Linux）で実行されている。SessionStart hook（`.claude/hooks/session-start.mjs`）が依存導入（npm install）と環境診断（preflight・Node >= 22.18 の確認含む）を行い、結果をセッション冒頭に出力する。ローカルの個人設定（`~/.claude/`・ユーザー MCP・Anthropic キー・wrangler ログイン）は届かない前提で、以下の縮退規約に従う。
+
+- **止まらない**: 検証手段が無いことを理由に作業を中断しない。実装 → 実行可能な検証をすべて実行 → push → draft PR 作成 → CI green まで追走、が完了の定義。
+- **unit テストは全部実行可能**: `npm test` は依存ゼロ・ネットワーク不要（Node >= 22.18 必須。コンテナの Node バージョンを最初に確認する）。リモートでも必ず実行する。
+- **リモート不可の検証**: ライブ tuning matrix（Anthropic キー必要）と `npm run dev`（wrangler・KV エミュレーション）はこの環境では実行できない。`_prompts.ts` や cross-check 閾値を変えた PR では、PR 本文でオーナーにライブ実行を依頼する。
+- **静的ページの見た目確認**: `node scripts/verify-ui-remote.mjs "file://$PWD/index.html" "file://$PWD/try/index.html"` を実行し、スクリーンショット（`.claude/tmp/ui-*.png`）を Read で視覚確認する（同梱 Chromium 使用・開発サーバー不要）。
+- **secrets 非接触**: `.dev.vars` / Cloudflare 側の値はこの環境に無い（値の要求・推測・生成をしない）。実行できなかった検証は PR 本文の「未検証項目」に列挙する（黙って省略しない）。
+- **スマホからのキック**: 起票・依頼の定型は dev-env `docs/prompts/mobile-kick.md` を使う（完了条件込みの1メッセージで渡す）。

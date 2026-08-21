@@ -65,7 +65,7 @@ robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 
 ## 6. リモート/クラウドセッション運用（claude.ai/code・スマホ発）
 
-`CLAUDE_CODE_REMOTE=true` のとき、claude.ai/code のクラウドコンテナ（Linux）で実行されている。ローカルの個人設定（`~/.claude/`・ユーザー MCP・Anthropic キー・wrangler ログイン）は届かない前提で、以下の縮退規約に従う。
+`CLAUDE_CODE_REMOTE=true` のとき、claude.ai/code のクラウドコンテナ（Linux）で実行されている。SessionStart hook（`.claude/hooks/session-start.mjs`）が依存導入（npm install）と環境診断（preflight・Node >= 22.18 の確認含む）を行い、結果をセッション冒頭に出力する。ローカルの個人設定（`~/.claude/`・ユーザー MCP・Anthropic キー・wrangler ログイン）は届かない前提で、以下の縮退規約に従う。
 
 - **止まらない**: 検証手段が無いことを理由に作業を中断しない。実装 → 実行可能な検証をすべて実行 → push → draft PR 作成 → CI green まで追走、が完了の定義。
 - **unit テストは全部実行可能**: `npm test` は依存ゼロ・ネットワーク不要（Node >= 22.18 必須。コンテナの Node バージョンを最初に確認する）。リモートでも必ず実行する。

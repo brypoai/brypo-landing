@@ -1,6 +1,7 @@
 # .github/workflows/x-reply.yml
 #
-# Daily driver for the X reply-CANDIDATE lister (@kokibuilds). POSTs
+# Driver for the X reply-CANDIDATE lister (@kokibuilds). SCHEDULE PAUSED since
+# 2026-09-27 — manual workflow_dispatch only. When scheduled, it POSTs
 # {"dry_run": true} + lang:ja queries twice a day (07:00 / 22:00 JST); the endpoint only lists
 # candidates into the digest — no drafting (Anthropic call removed 2026-08-10)
 # and it never posts to X (send path severed at code level 2026-08-10;
@@ -12,11 +13,13 @@ name: x-reply
 
 on:
   workflow_dispatch:
-  schedule:
-    # 22:00 UTC = 07:00 JST (next morning), daily. Best-effort; minute may drift.
-    - cron: "0 22 * * *"
-    # 13:00 UTC = 22:00 JST — evening pass so the 20-24 JST cluster isn't pushed out by MAX_PER_RUN.
-    - cron: "0 13 * * *"
+  # Schedule paused 2026-09-27 (owner decision while consolidating scheduled jobs).
+  # Manual runs still work via workflow_dispatch. To resume, uncomment:
+  # schedule:
+  #   # 22:00 UTC = 07:00 JST (next morning), daily. Best-effort; minute may drift.
+  #   - cron: "0 22 * * *"
+  #   # 13:00 UTC = 22:00 JST — evening pass so the 20-24 JST cluster isn't pushed out by MAX_PER_RUN.
+  #   - cron: "0 13 * * *"
 
 permissions: {}
 

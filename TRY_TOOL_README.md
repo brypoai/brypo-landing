@@ -311,6 +311,9 @@ hand-picked posts with no read call, so it works before billing is set up.
 
 ### Scheduling (`.github/workflows/x-reply.yml`)
 
+> **Paused 2026-09-27**: the schedule is commented out (owner decision); only
+> `workflow_dispatch` runs remain. The notes below describe the scheduled mode.
+
 A GitHub Actions cron (every 4h, `max_sends=2` → ~12/day, under the daily cap)
 POSTs to `/api/x-reply/run` — same pattern as the metrics snapshot, no
 Cloudflare cron binding needed. It **no-ops safely** until armed: it skips when

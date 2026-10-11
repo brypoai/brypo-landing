@@ -13,8 +13,8 @@
 
 | 部品 | 場所 | 役割 |
 |---|---|---|
-| 定期実行 | `.github/workflows/post-notify.yml` | 毎時 :17 に起動。送るかどうかはスクリプトが判断する |
-| 時刻・モード | `scripts/post-notify.config.json` | `send_hour_jst`（初期値 `12`）、`mode`（`dry_run` / `live`）。**数字や文字を書き換えて main に入れるだけで変わる** |
+| 定期実行 | `.github/workflows/post-notify.yml` | 15分おきに起動。何をするかはスクリプトが判断する |
+| 時刻・モード | `scripts/post-notify.config.json` | `send_hour_jst`（届く時刻・初期値 `12`）、`lead_hours`（何時間前から用意するか・初期値 `6`）、`mode`（`dry_run` / `live`）。**数字や文字を書き換えて main に入れるだけで変わる** |
 | 本体 | `scripts/post-notify.mjs` | 文案を取得 → 通知を組み立て → 送信（live のときだけ）→ 記録 |
 | 文字数・リンク | `functions/api/_xtext.ts` | X の重み付き文字数（twitter-text 準拠・280）、超えたら末尾を切る、`https://x.com/intent/tweet?text=` + URL エンコード |
 | ガード | `functions/api/_postnotify.ts` | 価格・有料版・アフィリエイト・メールアドレス・電話番号、＋任意の除外語（Secret `POST_NOTIFY_BLOCK_WORDS`。勤務先名など）に該当した文案は、本文を残してリンクを外す（タップ先は /ops） |
@@ -25,7 +25,8 @@
 - **既定は dry-run**（通知を組み立てて `out/post-notify/` に書き、送らない）。鍵が無くても動く。
 - **現在は live**（2026-10-11 オーナー指示で設定ファイルの `mode` を `live` に変更）。
 - **停止スイッチ**: GitHub の Variable `POST_NOTIFY_MODE=off` → 次の起動から何もしない。Variable は設定ファイルより優先（`live` / `dry_run` も指定できる）。
-- **1日1回**: 送信記録で同じ日の2回目を止める。記録が読めないときは live では送らない（毎時の重複通知を防ぐ）。
+- **12:00ちょうどに届く（予約配信）**: GitHub の定期実行は遅れる（このリポの実績で1.5〜5時間）か、飛ばされる。そこで 06:00 以降に最初に動いた実行が文案を用意し、ntfy に「12:00 に届ける」予約を入れる。12時を過ぎてから動いた場合はすぐ送る。手動実行（`force`）は常にすぐ送る。
+- **1日1回**: 送信記録で同じ日の2回目を止める。記録が読めないときは live では送らない（15分おきの重複通知を防ぐ）。
 - 文案が作れなかった日（予算上限・鍵なし等）は、3時間再試行してから「作れませんでした（理由）」を1件通知する。
 
 ### 送信手段の選定（ntfy × GitHub Actions）
@@ -78,9 +79,9 @@
 
 | やりたいこと | 方法 |
 |---|---|
-| 止める | <https://github.com/brypoai/brypo-landing/settings/variables/actions> で Variable `POST_NOTIFY_MODE` = `off`（消せば設定ファイルの `mode` に戻る） |
+| 止める | <https://github.com/brypoai/brypo-landing/settings/variables/actions> で Variable `POST_NOTIFY_MODE` = `off`（消せば設定ファイルの `mode` に戻る）。**その日の分がすでに予約済みなら、その1件は届く**（翌日分から止まる） |
 | 時刻を変える | `scripts/post-notify.config.json` の `send_hour_jst` を書き換えて PR → main |
 | 出してほしくない語を足す | Secret `POST_NOTIFY_BLOCK_WORDS`（カンマ区切り・任意） |
 
-- GitHub の定期実行は混雑時に数十分遅れることがある。日付が変わる前なら次の起動で送る。
+- GitHub の定期実行は遅れたり飛ばされたりする。06:00〜12:00 に1回も動かなかった日は、12時以降に最初に動いた時点で届く（日付が変わる前なら）。
 - 費用: Actions（公開リポ）0円、ntfy 0円、LLM は既存の1日1回（約 $0.02/日・`/try` と同じ $50/月 上限の内側）。

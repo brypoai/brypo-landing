@@ -34,7 +34,16 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { buildNotice, isDue, isLastChance, jstHour, parseBlockWords, parseConfig, parseMode } from "../functions/api/_postnotify.ts";
+import {
+  buildNotice,
+  deliveryDelay,
+  isLastChance,
+  isWindowOpen,
+  jstHour,
+  parseBlockWords,
+  parseConfig,
+  parseMode,
+} from "../functions/api/_postnotify.ts";
 import { alreadyRan, parseLog } from "../functions/api/_postlog.ts";
 import { jstDateKey } from "../functions/api/_lib.ts";
 
@@ -85,14 +94,15 @@ async function main() {
   }
 
   const now = arg("--now") ? new Date(arg("--now")) : new Date();
+  const nowMs = now.getTime();
   const date = jstDateKey(now);
   const hour = jstHour(now);
   const force = has("--force");
   const fixture = arg("--fixture");
   log(`mode=${mode} date=${date} hour=${hour} send_hour=${cfg.send_hour_jst}${force ? " (forced)" : ""}`);
 
-  if (!force && !isDue(hour, cfg)) {
-    log("not yet — before today's send hour.");
+  if (!force && !isWindowOpen(nowMs, date, cfg)) {
+    log(`not yet — today's notification is prepared from ${Math.max(0, cfg.send_hour_jst - cfg.lead_hours)}:00 JST.`);
     return 0;
   }
 
@@ -134,7 +144,7 @@ async function main() {
       draft = { text: res.data.text, angle: String(res.data.angle ?? "") };
     } else {
       reason = res.data?.reason || res.data?.error || (res.status ? `HTTP ${res.status}` : "接続できませんでした");
-      if (!force && !isLastChance(hour, cfg)) {
+      if (!force && !isLastChance(nowMs, date, cfg)) {
         log("no draft yet — will retry next hour.");
         return 0;
       }
@@ -147,8 +157,15 @@ async function main() {
       (notice.meta.guard.length ? ` guard=${notice.meta.guard.length} hit(s)` : ""),
   );
 
+  // Before the send hour, ntfy holds the notification and delivers it on
+  // the hour (scheduled delivery); after it (a late cron run) or on a forced
+  // run, it goes out now.
+  const delay = deliveryDelay(nowMs, date, cfg, force);
+  log(delay ? `delivery scheduled for ${cfg.send_hour_jst}:00 JST (ntfy delay)` : "delivery: now");
+
   // Keep a copy of what was (or would have been) sent. No topic in it.
-  const { drafts, meta, ...payload } = notice;
+  const { drafts, meta, ...fields } = notice;
+  const payload = delay ? { ...fields, delay } : fields;
   mkdirSync(OUT_DIR, { recursive: true });
   writeFileSync(join(OUT_DIR, `${date}.json`), JSON.stringify({ topic: "(NTFY_TOPIC)", ...payload }, null, 2) + "\n");
   log(`wrote out/post-notify/${date}.json`);
@@ -187,6 +204,12 @@ async function main() {
   if (token && !fixture) {
     const rec = await call(cfg, token, "POST", "/api/post-log", { kind: "send", date, drafts, mode });
     log(`post-log write: HTTP ${rec.status}`);
+    if (rec.status !== 200 && mode === "live") {
+      // The notification went out (or is scheduled) but today is not marked
+      // done, so the next tick would send again. Fail the run so it shows red.
+      log("post-log write failed after a live send — the next tick may send again; check /api/post-log.");
+      return 1;
+    }
   }
   return 0;
 }

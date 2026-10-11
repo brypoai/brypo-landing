@@ -25,6 +25,14 @@ export interface NotifyConfig {
   send_hour_jst: number;
   /** Hours after send_hour to keep retrying a failed draft fetch. */
   retry_hours: number;
+  /**
+   * Hours before send_hour from which a run may prepare the day's
+   * notification and hand it to ntfy for scheduled delivery at send_hour.
+   * GitHub's cron runs late (1.5–5 h measured on this repo) or not at all;
+   * preparing early and letting ntfy deliver on the hour makes the arrival
+   * time independent of when the workflow happened to run.
+   */
+  lead_hours: number;
   /** Where the runner fetches the draft / writes the log. */
   base_url: string;
   /** Board link (notification fallback tap target and the Sunday record link). */
@@ -36,6 +44,7 @@ export interface NotifyConfig {
 export const DEFAULT_CONFIG: NotifyConfig = {
   send_hour_jst: 12,
   retry_hours: 3,
+  lead_hours: 6,
   base_url: "https://brypo.com",
   ops_url: "https://brypo.com/ops/",
   mode: "dry_run",
@@ -50,6 +59,9 @@ export function parseConfig(obj: any): NotifyConfig {
   }
   if (Number.isInteger(obj.retry_hours) && obj.retry_hours >= 0 && obj.retry_hours <= 12) {
     c.retry_hours = obj.retry_hours;
+  }
+  if (Number.isInteger(obj.lead_hours) && obj.lead_hours >= 0 && obj.lead_hours <= 12) {
+    c.lead_hours = obj.lead_hours;
   }
   if (typeof obj.base_url === "string" && obj.base_url.startsWith("https://")) c.base_url = obj.base_url.replace(/\/+$/, "");
   if (typeof obj.ops_url === "string" && obj.ops_url.startsWith("https://")) c.ops_url = obj.ops_url;
@@ -77,15 +89,39 @@ export function jstHour(now: Date): number {
   return new Date(now.getTime() + 9 * 3600_000).getUTCHours();
 }
 
-/** Has today's send time arrived? */
-export function isDue(hour: number, cfg: NotifyConfig): boolean {
-  return hour >= cfg.send_hour_jst;
+function jstInstant(date: string, hour: number): number {
+  return Date.parse(`${date}T${String(hour).padStart(2, "0")}:00:00+09:00`);
 }
 
-/** Last tick of the day on which a failed draft fetch is still retried;
+/** Epoch ms of the send hour on `date` (JST YYYY-MM-DD). */
+export function sendInstant(date: string, cfg: NotifyConfig): number {
+  return jstInstant(date, cfg.send_hour_jst);
+}
+
+/** May a run at `nowMs` prepare today's notification? (from lead_hours
+ *  before the send hour; earlier runs exit without touching the network) */
+export function isWindowOpen(nowMs: number, date: string, cfg: NotifyConfig): boolean {
+  return nowMs >= sendInstant(date, cfg) - cfg.lead_hours * 3600_000;
+}
+
+/** Last moment of the day on which a failed draft fetch is still retried;
  *  past it, the day's notification goes out saying the draft could not be made. */
-export function isLastChance(hour: number, cfg: NotifyConfig): boolean {
-  return hour >= Math.min(23, cfg.send_hour_jst + cfg.retry_hours);
+export function isLastChance(nowMs: number, date: string, cfg: NotifyConfig): boolean {
+  return nowMs >= jstInstant(date, Math.min(23, cfg.send_hour_jst + cfg.retry_hours));
+}
+
+/** Closer to the send hour than this, deliver now (ntfy's own floor is 10 s). */
+export const MIN_DELAY_MS = 30_000;
+
+/**
+ * ntfy `delay` — unix seconds as a string — that lands the notification on
+ * the send hour, or null to deliver right away: the send hour has passed (a
+ * late run), it is less than MIN_DELAY_MS off, or the run was forced by hand.
+ */
+export function deliveryDelay(nowMs: number, date: string, cfg: NotifyConfig, force = false): string | null {
+  if (force) return null;
+  const at = sendInstant(date, cfg);
+  return at - nowMs >= MIN_DELAY_MS ? String(Math.floor(at / 1000)) : null;
 }
 
 // ---- guard ------------------------------------------------------------------

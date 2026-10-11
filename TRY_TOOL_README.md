@@ -249,9 +249,19 @@ Owner-gated draft of one X post per day, rendered on `/ops`. `GET
 publish and metrics; no new secret) returns `{ date, text, angle, cached }`.
 
 - **One generation per JST day**, cached in `TRY_KV` under
-  `postdraft:YYYY-MM-DD`. The first `/ops` load of the day pays for the call
-  (~7s); every later load that day is a KV read (~5ms). `postdraft:recent`
-  keeps the last 7 angles and feeds them back so consecutive days differ.
+  `postdraft:v<N>:YYYY-MM-DD` (`N` = `DRAFT_PROMPT_VERSION`; bump it when the
+  prompt changes so that day's draft regenerates once). The first request of
+  the day — normally the noon post-notify run — pays for the call (~7s);
+  every later one is a KV read (~5ms). `postdraft:recent` keeps the last 7
+  angles and feeds them back so consecutive days differ.
+- **Voice** (owner, 2026-10-12: 「人の感情がなくビジネス文書的」): one honest
+  moment with a feeling in it, casual plain-form Japanese, business /
+  press-release wording banned by name, digit-free voice examples. The model
+  also gets the counters' **change since the last draft**
+  (`postdraft:snapshot`) — a feeling needs something to react to — and
+  whether a link is due: `brypo.com/try` at most once per 3 days
+  (`postdraft:lastlink`). Feelings and opinions are allowed; events the facts
+  don't contain are not (same line as brypo Studio's ANTI_FABRICATION).
 - **Spend**: uses `ANTHROPIC_API_KEY_TRY` — the same key and the same $50/mo
   Console limit as `/try` — and books the cost into the same
   `usage:YYYY-MM-DD` counter, gated by `DAILY_BUDGET_USD` **before** calling.

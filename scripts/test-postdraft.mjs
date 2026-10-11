@@ -15,19 +15,27 @@
 import {
   DRAFT_MAX_TOKENS,
   DRAFT_SYSTEM_PROMPT,
+  DRAFT_PROMPT_VERSION,
   DRAFT_TTL_S,
-  L01_END,
+  LAST_LINK_KEY,
+  LINK_GAP_DAYS,
   POST_CHAR_LIMIT,
   POST_DRAFT_MODEL,
   RECENT_KEY,
   RECENT_LIMIT,
+  SNAPSHOT_KEY,
   buildDraftUserMessage,
   computeDraftCostUsd,
   daysUntil,
   draftKey,
+  linkAllowed,
+  mentionsLink,
   nextRecent,
   parseRecent,
+  parseSnapshot,
+  statsDelta,
   toPostDraft,
+  weekdayJa,
 } from "../functions/api/_postdraft.ts";
 import { jstDateKey, parseJsonObject } from "../functions/api/_lib.ts";
 
@@ -59,24 +67,73 @@ function eq(actual, expected, label = "") {
 // ---- KV keys ----------------------------------------------------------------
 
 console.log("unit: post-draft KV keys");
-t("draft key is namespaced per JST day", () => {
-  eq(draftKey("2026-08-10"), "postdraft:2026-08-10");
+t("draft key is namespaced per JST day and prompt version", () => {
+  eq(DRAFT_PROMPT_VERSION, 2);
+  eq(draftKey("2026-08-10"), "postdraft:v2:2026-08-10");
   // 08-10 08:00 UTC is already 08-10 17:00 JST; 08-10 23:00 UTC is 08-11 JST.
-  eq(draftKey(jstDateKey(new Date("2026-08-10T08:00:00Z"))), "postdraft:2026-08-10");
-  eq(draftKey(jstDateKey(new Date("2026-08-10T23:00:00Z"))), "postdraft:2026-08-11");
+  eq(draftKey(jstDateKey(new Date("2026-08-10T08:00:00Z"))), "postdraft:v2:2026-08-10");
+  eq(draftKey(jstDateKey(new Date("2026-08-10T23:00:00Z"))), "postdraft:v2:2026-08-11");
 });
-t("recent key is a single rolling entry", () => {
+t("a prompt change misses the old cache entry (regenerates once that day)", () => {
+  assert(draftKey("2026-10-12") !== "postdraft:2026-10-12", "v1 key no longer served");
+});
+t("state keys are single rolling entries", () => {
   eq(RECENT_KEY, "postdraft:recent");
+  eq(SNAPSHOT_KEY, "postdraft:snapshot");
+  eq(LAST_LINK_KEY, "postdraft:lastlink");
 });
 
 // ---- countdown --------------------------------------------------------------
 
-console.log("unit: countdown");
+console.log("unit: dates");
 t("daysUntil counts whole days and floors at zero", () => {
-  eq(daysUntil("2026-08-10", L01_END), 28);
-  eq(daysUntil("2026-09-07", L01_END), 0);
-  eq(daysUntil("2026-09-30", L01_END), 0, "past the gate");
-  eq(daysUntil("garbage", L01_END), 0, "unparseable input");
+  eq(daysUntil("2026-08-10", "2026-09-07"), 28);
+  eq(daysUntil("2026-09-07", "2026-09-07"), 0);
+  eq(daysUntil("2026-09-30", "2026-09-07"), 0, "past the date");
+  eq(daysUntil("garbage", "2026-09-07"), 0, "unparseable input");
+});
+t("weekdayJa names the JST weekday so the model never computes it", () => {
+  eq(weekdayJa("2026-10-11"), "日");
+  eq(weekdayJa("2026-10-12"), "月");
+  eq(weekdayJa("2026-10-17"), "土");
+  eq(weekdayJa("garbage"), "");
+});
+
+// ---- change since the last draft ----------------------------------------------
+
+console.log("unit: change since the last draft");
+t("parseSnapshot tolerates absent and corrupt values", () => {
+  eq(parseSnapshot(null), null);
+  eq(parseSnapshot("{"), null, "corrupt JSON");
+  eq(parseSnapshot('{"date":"x","unique":1,"repeat":0}'), null, "bad date");
+  eq(parseSnapshot('{"date":"2026-10-11","unique":-1,"repeat":0}'), null, "negative");
+  eq(parseSnapshot('{"date":"2026-10-11","unique":1.5,"repeat":0}'), null, "fractional");
+  eq(parseSnapshot('{"date":"2026-10-11","unique":12,"repeat":3}'), { date: "2026-10-11", unique: 12, repeat: 3 });
+});
+t("statsDelta reports growth since the previous draft", () => {
+  const prev = { date: "2026-10-11", unique: 12, repeat: 3 };
+  eq(statsDelta(prev, 13, 3, "2026-10-12"), { since: "2026-10-11", newUsers: 1, newRepeat: 0 });
+  eq(statsDelta(prev, 12, 3, "2026-10-12"), { since: "2026-10-11", newUsers: 0, newRepeat: 0 }, "flat day");
+});
+t("statsDelta says nothing rather than tell a false story", () => {
+  const prev = { date: "2026-10-11", unique: 12, repeat: 3 };
+  eq(statsDelta(null, 12, 3, "2026-10-12"), null, "first run");
+  eq(statsDelta(prev, 12, 3, "2026-10-11"), null, "same-day regeneration");
+  eq(statsDelta(prev, 5, 3, "2026-10-12"), null, "counter reset (would read as -7 people)");
+  eq(statsDelta(prev, 12, 1, "2026-10-12"), null, "repeat counter reset");
+});
+t("the link is allowed at most once per LINK_GAP_DAYS", () => {
+  eq(LINK_GAP_DAYS, 3);
+  eq(linkAllowed(null, "2026-10-12"), true, "never linked");
+  eq(linkAllowed("garbage", "2026-10-12"), true, "corrupt value never blocks forever");
+  eq(linkAllowed("2026-10-12", "2026-10-12"), false, "same day");
+  eq(linkAllowed("2026-10-10", "2026-10-12"), false, "two days later");
+  eq(linkAllowed("2026-10-09", "2026-10-12"), true, "three days later");
+});
+t("mentionsLink spots the product link in a draft", () => {
+  assert(mentionsLink("よかったら brypo.com/try で触ってみてほしい"));
+  assert(mentionsLink("https://Brypo.com/try"));
+  assert(!mentionsLink("証拠と照らし合わせる道具を作ってる"));
 });
 
 // ---- draft validation -------------------------------------------------------
@@ -146,36 +203,89 @@ t("a realistic daily call stays far under the shared cap", () => {
 
 console.log("unit: prompt grounding");
 t("system prompt forbids invented facts and fixes the output shape", () => {
-  assert(/ONLY the facts given/.test(DRAFT_SYSTEM_PROMPT), "grounding rule present");
-  assert(/Never invent/.test(DRAFT_SYSTEM_PROMPT), "no-invention rule present");
+  assert(/only the numbers in the facts list/.test(DRAFT_SYSTEM_PROMPT), "numbers grounded");
+  assert(/Do not say that something happened unless the facts say it/.test(DRAFT_SYSTEM_PROMPT), "no invented events");
+  assert(/If the numbers did not change, don't imply they did/.test(DRAFT_SYSTEM_PROMPT), "no fake movement");
   assert(/OUTPUT LANGUAGE: Japanese/.test(DRAFT_SYSTEM_PROMPT), "output language fixed");
   assert(DRAFT_SYSTEM_PROMPT.includes('"text"') && DRAFT_SYSTEM_PROMPT.includes('"angle"'), "shape stated");
   assert(/140/.test(DRAFT_SYSTEM_PROMPT), "character budget stated");
 });
-t("user message carries only first-party values", () => {
-  const msg = buildDraftUserMessage({
-    date: "2026-08-10",
-    daysLeft: 28,
-    uniqueTryUsers: 1,
-    repeatTryUsers: 0,
-    recentAngles: ["昨日の角度", "一昨日の角度"],
-  });
-  assert(msg.includes("2026-08-10"), "date");
-  assert(msg.includes("28"), "days left");
-  assert(msg.includes(": 1"), "unique users");
-  assert(msg.includes("昨日の角度"), "recent angles fed back");
-  assert(msg.includes("pick a different one today"), "dedup instruction");
+
+console.log("unit: prompt voice (owner 2026-10-12: 「人の感情がなくビジネス文書的」)");
+t("asks for a feeling in every post, casual plain form, no keigo", () => {
+  assert(/It carries a feeling/.test(DRAFT_SYSTEM_PROMPT), "feeling required");
+  assert(/A post with no feeling in it has failed/.test(DRAFT_SYSTEM_PROMPT), "flat post named as failure");
+  assert(/Casual plain form/.test(DRAFT_SYSTEM_PROMPT) && /No です・ます/.test(DRAFT_SYSTEM_PROMPT), "常体");
+  assert(/Feelings, opinions, doubts, hopes and questions are fine/.test(DRAFT_SYSTEM_PROMPT), "feelings allowed");
+  assert(/small and plain beats dramatic/.test(DRAFT_SYSTEM_PROMPT), "no melodrama");
+  assert(!/resolution/.test(DRAFT_SYSTEM_PROMPT), "no shape that invites invented plans");
 });
-t("first run says so instead of listing an empty section", () => {
+t("bans the business / press-release register by name", () => {
+  for (const w of ["本日", "いたしました", "となります", "を実現", "を提供", "ぜひ", "皆様", "ユーザー数", "リピート率", "チェックポイント", "いかがでしたか"]) {
+    assert(DRAFT_SYSTEM_PROMPT.includes(w), `banned word listed: ${w}`);
+  }
+  assert(/No call to action and no engagement bait/.test(DRAFT_SYSTEM_PROMPT), "no CTA / bait");
+});
+t("voice examples are tone-only, in casual form, and carry no digits", () => {
+  const start = DRAFT_SYSTEM_PROMPT.indexOf("Voice examples");
+  const end = DRAFT_SYSTEM_PROMPT.indexOf("OUTPUT LANGUAGE");
+  assert(start > 0 && end > start, "examples block present");
+  const block = DRAFT_SYSTEM_PROMPT.slice(start, end);
+  assert(/never reuse their facts/.test(block), "marked as tone-only");
+  const examples = block.split("\n").filter((l) => l.startsWith("- "));
+  assert(examples.length >= 4, `at least four examples, got ${examples.length}`);
+  for (const ex of examples) {
+    assert(!/[0-9０-９]/.test(ex), `no digits that could leak into a real post: ${ex}`);
+    assert(!/です|ます/.test(ex), `examples model the casual form too: ${ex}`);
+    assert(!/brypo\.com/.test(ex), `no link in examples: ${ex}`);
+  }
+});
+t("the old L0-1 checkpoint is gone from the prompt", () => {
   const msg = buildDraftUserMessage({
-    date: "2026-08-10",
-    daysLeft: 28,
-    uniqueTryUsers: 0,
-    repeatTryUsers: 0,
+    date: "2026-10-12",
+    uniqueTryUsers: 12,
+    repeatTryUsers: 3,
+    delta: null,
+    linkOk: true,
     recentAngles: [],
   });
+  assert(!/checkpoint|Days left|2026-09-07/.test(DRAFT_SYSTEM_PROMPT + msg), "no stale countdown");
+});
+
+console.log("unit: user message");
+const base = {
+  date: "2026-10-12",
+  uniqueTryUsers: 13,
+  repeatTryUsers: 3,
+  delta: { since: "2026-10-11", newUsers: 1, newRepeat: 0 },
+  linkOk: false,
+  recentAngles: ["昨日の角度", "一昨日の角度"],
+};
+t("carries only first-party values, with the weekday spelled out", () => {
+  const msg = buildDraftUserMessage(base);
+  assert(msg.includes("2026-10-12 (月)"), "date + weekday");
+  assert(msg.includes("so far: 13"), "unique users");
+  assert(msg.includes("later day: 3"), "repeat users");
+  assert(msg.includes("昨日の角度"), "recent angles fed back");
+  assert(msg.includes("choose a different feeling or shape today"), "dedup instruction");
+});
+t("states the change since the last draft — growth, or plainly none", () => {
+  assert(buildDraftUserMessage(base).includes("Since the last draft (2026-10-11): 1 new person tried it; 0 more came back."));
+  const two = buildDraftUserMessage({ ...base, delta: { since: "2026-10-11", newUsers: 2, newRepeat: 1 } });
+  assert(two.includes("2 new people tried it; 1 more came back."), "plural");
+  const flat = buildDraftUserMessage({ ...base, delta: { since: "2026-10-11", newUsers: 0, newRepeat: 0 } });
+  assert(flat.includes("Since the last draft (2026-10-11): no change."), "flat day said plainly");
+  const none = buildDraftUserMessage({ ...base, delta: null });
+  assert(!none.includes("Since the last draft"), "no line when there is nothing honest to say");
+});
+t("tells the model whether a link is allowed today", () => {
+  assert(buildDraftUserMessage(base).includes("Link today: no"), "not today");
+  assert(buildDraftUserMessage({ ...base, linkOk: true }).includes("Link today: OK"), "allowed");
+});
+t("first run says so instead of listing an empty section", () => {
+  const msg = buildDraftUserMessage({ ...base, delta: null, recentAngles: [] });
   assert(msg.includes("No posts drafted yet"), "first-run wording");
-  assert(!msg.includes("pick a different one today"), "no dangling dedup list");
+  assert(!msg.includes("choose a different feeling"), "no dangling dedup list");
 });
 
 // ---- constants sanity -------------------------------------------------------
@@ -184,7 +294,7 @@ console.log("unit: constants");
 t("defaults are sane", () => {
   assert(POST_DRAFT_MODEL.startsWith("claude-"), "model id looks like a Claude model");
   assert(DRAFT_MAX_TOKENS >= 1000, "headroom for adaptive thinking + the JSON body");
-  assert(DRAFT_TTL_S > 28 * 24 * 3600, "cached drafts outlive the L0-1 window");
+  assert(DRAFT_TTL_S >= 30 * 24 * 3600, "state keys outlive a month of drafts");
   eq(POST_CHAR_LIMIT, 140);
 });
 

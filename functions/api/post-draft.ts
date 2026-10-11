@@ -3,8 +3,9 @@
 // GET /api/post-draft — owner-only daily X post draft for the /ops board.
 // Gated by PUBLISH_TOKEN, exactly like /api/metrics and /api/x-reply/digest.
 //
-// One generation per JST day, cached in KV: the first /ops load of the day
-// pays for the call, every later load that day reads the cache. The draft is
+// One generation per JST day (and prompt version), cached in KV: the first
+// request of the day (normally the noon post-notify run, else an /ops load)
+// pays for the call, every later request that day reads the cache. The draft is
 // DISPLAYED ONLY — there is no send path here (the /2/tweets path stays
 // severed per PR #22), and nothing but our own first-party values reaches the
 // model (see the _postdraft.ts header for why that matters).
@@ -20,15 +21,19 @@ import {
   DRAFT_SYSTEM_PROMPT,
   DRAFT_TIMEOUT_MS,
   DRAFT_TTL_S,
-  L01_END,
+  LAST_LINK_KEY,
   POST_DRAFT_MODEL,
   RECENT_KEY,
+  SNAPSHOT_KEY,
   buildDraftUserMessage,
   computeDraftCostUsd,
-  daysUntil,
   draftKey,
+  linkAllowed,
+  mentionsLink,
   nextRecent,
   parseRecent,
+  parseSnapshot,
+  statsDelta,
   toPostDraft,
 } from "./_postdraft";
 import type { PostDraft } from "./_postdraft";
@@ -186,11 +191,14 @@ async function handleGet(context: PagesContext): Promise<Response> {
     return unavailable(date, "今日の予算上限に達しました（UTC日でリセット）");
   }
 
-  // 3. Draft from first-party values only.
-  const [uniqueTryUsers, repeatTryUsers, recentRaw] = await Promise.all([
+  // 3. Draft from first-party values only: the counters, their change since
+  //    the last draft, whether a link is due, and our own recent angles.
+  const [uniqueTryUsers, repeatTryUsers, recentRaw, snapshotRaw, lastLinkRaw] = await Promise.all([
     readKvNumber(kv, TRY_USERS_TOTAL_KEY),
     readKvNumber(kv, TRY_USERS_REPEAT_KEY),
     kv.get(RECENT_KEY),
+    kv.get(SNAPSHOT_KEY),
+    kv.get(LAST_LINK_KEY),
   ]);
   const recentAngles = parseRecent(recentRaw);
   const model = env.POST_DRAFT_MODEL || POST_DRAFT_MODEL;
@@ -201,9 +209,10 @@ async function handleGet(context: PagesContext): Promise<Response> {
     DRAFT_SYSTEM_PROMPT,
     buildDraftUserMessage({
       date,
-      daysLeft: daysUntil(date, L01_END),
       uniqueTryUsers,
       repeatTryUsers,
+      delta: statsDelta(parseSnapshot(snapshotRaw), uniqueTryUsers, repeatTryUsers, date),
+      linkOk: linkAllowed(lastLinkRaw, date),
       recentAngles,
     }),
   );
@@ -211,11 +220,17 @@ async function handleGet(context: PagesContext): Promise<Response> {
     return json({ error: result.reason, code: "draft_failed" }, 502);
   }
 
-  // 4. Cache the day's draft, remember the angle, and book the spend against
-  //    the shared counter. A rare concurrent first-load-of-the-day can draft
-  //    twice; the second write simply wins.
+  // 4. Cache the day's draft, remember the angle and today's counters (the
+  //    base for tomorrow's "since the last draft"), note a link if the post
+  //    carries one, and book the spend against the shared counter. A rare
+  //    concurrent first-load-of-the-day can draft twice; the second write
+  //    simply wins.
   const { draft } = result;
   await Promise.all([
+    kv.put(SNAPSHOT_KEY, JSON.stringify({ date, unique: uniqueTryUsers, repeat: repeatTryUsers }), {
+      expirationTtl: DRAFT_TTL_S,
+    }),
+    ...(mentionsLink(draft.text) ? [kv.put(LAST_LINK_KEY, date, { expirationTtl: DRAFT_TTL_S })] : []),
     kv.put(draftKey(date), JSON.stringify(draft), { expirationTtl: DRAFT_TTL_S }),
     kv.put(RECENT_KEY, JSON.stringify(nextRecent(recentAngles, draft.angle)), {
       expirationTtl: DRAFT_TTL_S,

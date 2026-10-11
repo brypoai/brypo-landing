@@ -134,10 +134,12 @@ t("config: defaults are 12:00 JST and brypo.com", () => {
   eq(DEFAULT_CONFIG.send_hour_jst, 12);
   eq(parseConfig(null), DEFAULT_CONFIG);
 });
-t("config: the repo file parses to the defaults", () => {
+t("config: the repo file parses cleanly", () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const file = JSON.parse(readFileSync(join(here, "post-notify.config.json"), "utf8"));
-  eq(parseConfig(file), DEFAULT_CONFIG);
+  // Every field in the file is valid (mode is the owner's switch: either value).
+  assert(file.mode === "live" || file.mode === "dry_run", `mode ${file.mode}`);
+  eq(parseConfig(file), { ...DEFAULT_CONFIG, mode: file.mode });
 });
 t("config: mode is dry_run unless the file says exactly live", () => {
   eq(parseConfig({ mode: "live" }).mode, "live");
@@ -355,12 +357,14 @@ const outFile = (d) => join(root, "out", "post-notify", `${d}.json`);
 
 function run(args, env = {}) {
   return spawnSync(process.execPath, [join(here, "post-notify.mjs"), ...args], {
-    env: { PATH: process.env.PATH, ...env },
+    // Pin dry_run unless a test says otherwise, so the repo config's mode
+    // (the owner's live switch) never makes a test try to send.
+    env: { PATH: process.env.PATH, POST_NOTIFY_MODE: "dry_run", ...env },
     encoding: "utf8",
   });
 }
 
-t("dry run (config default, no secrets): writes the notification with the X link, sends nothing", () => {
+t("dry run (no secrets): writes the notification with the X link, sends nothing", () => {
   const d = "2026-10-12";
   rmSync(outFile(d), { force: true });
   const r = run(["--fixture", fixture, "--now", "2026-10-12T03:30:00Z"]);

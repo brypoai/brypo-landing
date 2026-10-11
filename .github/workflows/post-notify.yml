@@ -1,10 +1,17 @@
 # .github/workflows/post-notify.yml
 #
-# Daily draft notification (docs/post-notify.md). Ticks every hour;
-# scripts/post-notify.mjs decides whether this tick sends — the send hour and
-# the default mode live in scripts/post-notify.config.json (send_hour_jst,
-# default 12 = 12:00 JST; mode, default dry_run), so changing either never
-# touches this file. Once a day is enforced by the run log (/api/post-log).
+# Daily draft notification (docs/post-notify.md). Ticks every 15 minutes;
+# scripts/post-notify.mjs decides whether this tick acts — the send hour, the
+# preparation lead and the default mode live in scripts/post-notify.config.json
+# (send_hour_jst, default 12 = 12:00 JST; lead_hours, default 6; mode), so
+# changing them never touches this file. Once a day is enforced by the run log
+# (/api/post-log).
+#
+# Why 15 minutes and a lead: GitHub runs scheduled workflows late (1.5–5 h on
+# this repo's x-reply history) or drops them (1 of ~7 hourly ticks fired on the
+# first day). The first tick that lands inside the lead window prepares the
+# draft and hands it to ntfy with a `delay`, so the phone gets it exactly at
+# send_hour no matter when the tick ran; a tick after send_hour sends at once.
 #
 # Sends to the owner's phone via ntfy (secret NTFY_TOPIC, already used by
 # x-reply.yml). Variable POST_NOTIFY_MODE overrides the config: "live" sends,
@@ -23,8 +30,8 @@ on:
         type: boolean
         default: false
   schedule:
-    # Every hour at :17 (off the :00 rush, where GitHub delays/drops more runs).
-    - cron: "17 * * * *"
+    # Every 15 minutes, off the :00/:15/:30/:45 marks where GitHub queues pile up.
+    - cron: "7,22,37,52 * * * *"
 
 permissions:
   contents: read

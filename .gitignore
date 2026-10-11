@@ -4,3 +4,6 @@ node_modules/
 
 # claude — リモートセッションの一時出力
 .claude/tmp/
+
+# post-notify.mjs の出力（dry-run の通知本文）
+out/

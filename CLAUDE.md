@@ -28,10 +28,18 @@ functions/api/
   x-reply/run.ts                POST /api/x-reply/run（リプライエンジン: 起草→ガードレール→auto送信）
   x-reply/digest.ts             GET /api/x-reply/digest（送信/スキップの事後ダイジェスト・owner-only）
   _xreply.ts                    リプライエンジンの純粋ヘルパー（ガードレール・類似度・候補フィルタ）
+  post-draft.ts / _postdraft.ts GET /api/post-draft（/ops の今日の投稿文案・1日1本）
+  post-log.ts / _postlog.ts     GET/POST /api/post-log（文案通知の送信記録・週次記録・判定の線）
+  _postnotify.ts / _xtext.ts    文案通知の純粋ヘルパー（時刻・ガード・本文）/ X 重み付き文字数・intent URL
+ops/index.html                  /ops（オーナー用ボード: 今日の投稿・発信の記録・返信候補）
+docs/post-notify.md             毎日の投稿文案通知の正本（仕組み・判定の線・👤手順）
 scripts/
   test-crosscheck.mjs           _lib.ts の unit テスト + ライブ tuning matrix
   test-publish.mjs              _publish.ts / _lib.ts の unit テスト
   test-xreply.mjs               _xreply.ts の unit テスト（ガードレール24ケース）
+  test-postnotify.mjs           文案通知の unit テスト（_xtext / _postnotify / _postlog / post-notify.mjs の dry-run）
+  post-notify.mjs               毎日の投稿文案通知（ntfy・Actions post-notify.yml が毎時実行・既定 dry-run）
+  post-notify.config.json       通知時刻（send_hour_jst・JST）と既定モード（mode）
 robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 ```
 
@@ -46,6 +54,8 @@ robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 | cross-check ライブ tuning matrix      | `node scripts/test-crosscheck.mjs`（Anthropic キー必要・オーナーがローカルで） |
 | publish unit                          | `node scripts/test-publish.mjs`                                                |
 | reply-engine unit                     | `node scripts/test-xreply.mjs`                                                 |
+| 文案通知 unit                         | `node scripts/test-postnotify.mjs`                                             |
+| 文案通知の dry-run（送らない）        | `npm run post-notify:dry`（`out/post-notify/` に本文を出力）                   |
 | ローカル開発                          | `npm run dev`（wrangler pages dev・ローカル KV エミュレーション）              |
 
 - unit テストは**依存ゼロ・ネットワーク不要**（`scripts/*.mjs` が `functions/api/*.ts` を Node の type stripping で直接 import する）。**Node >= 22.18 必須**
@@ -55,6 +65,7 @@ robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 
 - **secrets の値はすべて Cloudflare Pages（ダッシュボード）側で管理する。このリポでは値を一切扱わない**（コード・コミット・Issue・PR・ログに書かない。扱うのはキー名のみ）
 - キー名の一覧（`ANTHROPIC_API_KEY_TRY` / `PUBLISH_TOKEN` / `X_*` など）と設定手順は `TRY_TOOL_README.md` が正
+- 例外: GitHub Actions が使う鍵は **リポの Actions Secrets / Variables**（`PUBLISH_TOKEN` / `NTFY_TOPIC` / 文案通知の `POST_NOTIFY_BLOCK_WORDS` / Variable `POST_NOTIFY_MODE` 等。一覧と手順は `docs/post-notify.md`・`TRY_TOOL_README.md`）。ここでも値は扱わない
 - ローカル実行用の `.dev.vars` は gitignore 済み。読み取り・コミットしない。新しい env を足すときは `.dev.vars.example` にキー名だけ追記する（値は空）
 
 ## 5. 禁止事項

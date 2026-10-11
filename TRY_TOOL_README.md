@@ -274,6 +274,31 @@ publish and metrics; no new secret) returns `{ date, text, angle, cached }`.
 - Pure helpers live in `functions/api/_postdraft.ts`; unit tests in
   `scripts/test-postdraft.mjs` (`npm run test:postdraft`, in `npm test`).
 
+## Daily draft notification (`scripts/post-notify.mjs` + `/api/post-log`)
+
+Pushes the `/api/post-draft` draft to the owner's phone once a day via ntfy;
+tapping the notification opens X's compose screen with the text prefilled (the
+owner posts by hand). **Full spec, judgment lines and owner steps:
+`docs/post-notify.md`.**
+
+- Driver: `.github/workflows/post-notify.yml` (hourly at :17); the send hour
+  (`send_hour_jst`, default 12 JST) and default mode (`mode`, default
+  `dry_run`) are in `scripts/post-notify.config.json`.
+- Variable `POST_NOTIFY_MODE` overrides the config (`live` / `dry_run`;
+  `off` = kill switch). Secrets: the existing `PUBLISH_TOKEN` and
+  `NTFY_TOPIC` (both already used by x-reply.yml); optional
+  `POST_NOTIFY_BLOCK_WORDS`. **No new Cloudflare env, no new secret.**
+- `/api/post-log` (owner-gated, `PUBLISH_TOKEN`): `GET` → `{ today, log,
+  judgment }`; `POST {kind:"send",date,drafts,mode}` (machine) /
+  `{kind:"weekly",week,posts,mood}` (owner, from `/ops`). One KV document
+  `postlog:v1`, no TTL. Pure helpers: `_postlog.ts` (judgment),
+  `_postnotify.ts` (schedule / guard / notification), `_xtext.ts`
+  (twitter-text weighted length, 280 fit, intent URL). `/api/post-draft` now
+  also returns `weighted_length`, `intent_url`, `intent_trimmed`.
+- Tests: `scripts/test-postnotify.mjs` (`npm run test:postnotify`, in
+  `npm test` and CI). Local dry run: `npm run post-notify:dry` (uses the live
+  site unless `--base http://localhost:8788` with `npm run dev`).
+
 ## Reply engine (`/api/x-reply/*`) — growth (distribution)
 
 Owner-gated auto-reply engine for @kokibuilds growth (strategy: dev-env

@@ -32,6 +32,7 @@ import {
   toPostDraft,
 } from "./_postdraft";
 import type { PostDraft } from "./_postdraft";
+import { fitToWeighted, weightedLength, xIntentUrl } from "./_xtext";
 
 interface KVNamespace {
   get(key: string): Promise<string | null>;
@@ -59,6 +60,16 @@ function json(body: unknown, status: number): Response {
     status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
+}
+
+/**
+ * The "X で投稿" fields /ops renders next to the draft: X's weighted length
+ * (280 = the limit) and a compose link with the text prefilled, fitted to 280
+ * first. The link only opens X's compose screen — nothing is sent from here.
+ */
+function xFields(text: string): { weighted_length: number; intent_url: string; intent_trimmed: boolean } {
+  const fit = fitToWeighted(text);
+  return { weighted_length: weightedLength(text), intent_url: xIntentUrl(fit.text), intent_trimmed: fit.trimmed };
 }
 
 /** An expected-unavailable answer: 200 so /ops renders the reason inline. */
@@ -152,7 +163,10 @@ async function handleGet(context: PagesContext): Promise<Response> {
   const cachedRaw = await kv.get(draftKey(date));
   const cached = toPostDraft(parseJsonObject(cachedRaw ?? ""));
   if (cached !== null) {
-    return json({ date, text: cached.text, angle: cached.angle, cached: true, model: null }, 200);
+    return json(
+      { date, text: cached.text, angle: cached.angle, cached: true, model: null, ...xFields(cached.text) },
+      200,
+    );
   }
 
   const apiKey = env.ANTHROPIC_API_KEY_TRY;
@@ -213,7 +227,10 @@ async function handleGet(context: PagesContext): Promise<Response> {
     ),
   ]);
 
-  return json({ date, text: draft.text, angle: draft.angle, cached: false, model }, 200);
+  return json(
+    { date, text: draft.text, angle: draft.angle, cached: false, model, ...xFields(draft.text) },
+    200,
+  );
 }
 
 // Pages Functions dispatch: GET only, 405 otherwise (mirrors metrics.ts).

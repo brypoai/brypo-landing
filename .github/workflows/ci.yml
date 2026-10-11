@@ -39,6 +39,11 @@ jobs:
       - name: Unit tests (publish)
         run: node scripts/test-publish.mjs
 
+      # 毎日の投稿文案メール（docs/post-mail.md）: X 文字数・ガード・メール本文・
+      # 判定の線・post-mail.mjs の dry-run / 停止スイッチ（fixture・ネットワーク不要）
+      - name: Unit tests (post-mail)
+        run: node scripts/test-postmail.mjs
+
       # /try prompts は app（brypo format-render SYSTEM_PROMPTS）の手動フォーク。
       # app 側との drift を検知する（CI では fingerprint 保証・cross-repo persona
       # 照合は ../brypo がある dev/local でのみ実行）。

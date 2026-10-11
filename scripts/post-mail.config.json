@@ -1,0 +1,7 @@
+{
+  "_comment": "毎日の投稿文案メール（docs/post-mail.md）。send_hour_jst = 送信する時刻（JST・0〜23時）。変更はこの数字を書き換えて PR を main に入れるだけ。retry_hours = 文案の取得に失敗したとき何時間後まで再試行するか。宛先・鍵はここに書かない（GitHub Secrets）。",
+  "send_hour_jst": 12,
+  "retry_hours": 3,
+  "base_url": "https://brypo.com",
+  "ops_url": "https://brypo.com/ops/"
+}

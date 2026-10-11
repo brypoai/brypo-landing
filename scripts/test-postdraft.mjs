@@ -68,14 +68,15 @@ function eq(actual, expected, label = "") {
 
 console.log("unit: post-draft KV keys");
 t("draft key is namespaced per JST day and prompt version", () => {
-  eq(DRAFT_PROMPT_VERSION, 2);
-  eq(draftKey("2026-08-10"), "postdraft:v2:2026-08-10");
+  eq(DRAFT_PROMPT_VERSION, 3);
+  eq(draftKey("2026-08-10"), "postdraft:v3:2026-08-10");
   // 08-10 08:00 UTC is already 08-10 17:00 JST; 08-10 23:00 UTC is 08-11 JST.
-  eq(draftKey(jstDateKey(new Date("2026-08-10T08:00:00Z"))), "postdraft:v2:2026-08-10");
-  eq(draftKey(jstDateKey(new Date("2026-08-10T23:00:00Z"))), "postdraft:v2:2026-08-11");
+  eq(draftKey(jstDateKey(new Date("2026-08-10T08:00:00Z"))), "postdraft:v3:2026-08-10");
+  eq(draftKey(jstDateKey(new Date("2026-08-10T23:00:00Z"))), "postdraft:v3:2026-08-11");
 });
 t("a prompt change misses the old cache entry (regenerates once that day)", () => {
   assert(draftKey("2026-10-12") !== "postdraft:2026-10-12", "v1 key no longer served");
+  assert(draftKey("2026-10-12") !== "postdraft:v2:2026-10-12", "v2 key no longer served");
 });
 t("state keys are single rolling entries", () => {
   eq(RECENT_KEY, "postdraft:recent");
@@ -215,7 +216,7 @@ console.log("unit: prompt voice (owner 2026-10-12: 「人の感情がなくビ�
 t("asks for a feeling in every post, casual plain form, no keigo", () => {
   assert(/It carries a feeling/.test(DRAFT_SYSTEM_PROMPT), "feeling required");
   assert(/A post with no feeling in it has failed/.test(DRAFT_SYSTEM_PROMPT), "flat post named as failure");
-  assert(/Casual plain form/.test(DRAFT_SYSTEM_PROMPT) && /No です・ます/.test(DRAFT_SYSTEM_PROMPT), "常体");
+  assert(/casual plain Japanese/.test(DRAFT_SYSTEM_PROMPT) && /No です・ます/.test(DRAFT_SYSTEM_PROMPT), "常体");
   assert(/Feelings, opinions, doubts, hopes and questions are fine/.test(DRAFT_SYSTEM_PROMPT), "feelings allowed");
   assert(/small and plain beats dramatic/.test(DRAFT_SYSTEM_PROMPT), "no melodrama");
   assert(!/resolution/.test(DRAFT_SYSTEM_PROMPT), "no shape that invites invented plans");
@@ -226,18 +227,39 @@ t("bans the business / press-release register by name", () => {
   }
   assert(/No call to action and no engagement bait/.test(DRAFT_SYSTEM_PROMPT), "no CTA / bait");
 });
-t("voice examples are tone-only, in casual form, and carry no digits", () => {
-  const start = DRAFT_SYSTEM_PROMPT.indexOf("Voice examples");
+console.log("unit: prompt voice v3 (owner sample: 「この位の感じでいいのでは」)");
+const OWNER_SAMPLE = "触ってくれた人はまだ一人だけど、モチベ保たせてくれる唯一の人や。";
+t("the owner's own post is the first, verbatim voice reference", () => {
+  const at = DRAFT_SYSTEM_PROMPT.indexOf(OWNER_SAMPLE);
+  assert(at > 0, "owner sample present verbatim");
+  assert(at < DRAFT_SYSTEM_PROMPT.indexOf("More voice examples"), "it comes before the other examples");
+  assert(/never reuse that count/.test(DRAFT_SYSTEM_PROMPT), "its count is marked as that day's, not a fact");
+});
+t("short like the owner's post: one or two sentences, 20–60 characters", () => {
+  assert(/One or two sentences, usually 20–60 Japanese characters/.test(DRAFT_SYSTEM_PROMPT), "length target");
+  assert(!/60–120/.test(DRAFT_SYSTEM_PROMPT), "old, longer target gone");
+});
+t("the owner's light Kansai や, never a caricature", () => {
+  assert(/light Kansai flavour/.test(DRAFT_SYSTEM_PROMPT), "dialect named");
+  assert(/never as a caricature/.test(DRAFT_SYSTEM_PROMPT), "kept light");
+});
+t("a link, when allowed, sits alone on the last line", () => {
+  assert(/put it alone on the\s+last line, bare/.test(DRAFT_SYSTEM_PROMPT), "link format");
+});
+t("every voice example is short, casual, digit-free and link-free", () => {
+  const start = DRAFT_SYSTEM_PROMPT.indexOf("The owner's own post");
   const end = DRAFT_SYSTEM_PROMPT.indexOf("OUTPUT LANGUAGE");
-  assert(start > 0 && end > start, "examples block present");
+  assert(start > 0 && end > start, "examples present");
   const block = DRAFT_SYSTEM_PROMPT.slice(start, end);
   assert(/never reuse their facts/.test(block), "marked as tone-only");
   const examples = block.split("\n").filter((l) => l.startsWith("- "));
   assert(examples.length >= 4, `at least four examples, got ${examples.length}`);
   for (const ex of examples) {
-    assert(!/[0-9０-９]/.test(ex), `no digits that could leak into a real post: ${ex}`);
-    assert(!/です|ます/.test(ex), `examples model the casual form too: ${ex}`);
-    assert(!/brypo\.com/.test(ex), `no link in examples: ${ex}`);
+    const text = ex.slice(2);
+    assert(!/[0-9０-９]/.test(text), `no digits that could leak into a real post: ${ex}`);
+    assert(!/です|ます/.test(text), `examples model the casual form too: ${ex}`);
+    assert(!/brypo\.com/.test(text), `no link in examples: ${ex}`);
+    assert([...text].length <= 50, `short like the owner's post (${[...text].length} chars): ${ex}`);
   }
 });
 t("the old L0-1 checkpoint is gone from the prompt", () => {

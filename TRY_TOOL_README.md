@@ -256,7 +256,9 @@ publish and metrics; no new secret) returns `{ date, text, angle, cached }`.
   angles and feeds them back so consecutive days differ.
 - **Voice** (owner, 2026-10-12: 「人の感情がなくビジネス文書的」): one honest
   moment with a feeling in it, casual plain-form Japanese, business /
-  press-release wording banned by name, digit-free voice examples. The model
+  press-release wording banned by name, digit-free voice examples. v3 adds the
+  owner's own post as the first reference (1–2 sentences, 20–60 characters,
+  a light Kansai や, the link alone on the last line when allowed). The model
   also gets the counters' **change since the last draft**
   (`postdraft:snapshot`) — a feeling needs something to react to — and
   whether a link is due: `brypo.com/try` at most once per 3 days

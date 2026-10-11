@@ -1,27 +1,27 @@
 // functions/api/_postlog.ts
 //
-// Pure helpers for /api/post-log — the record behind the daily draft mail
-// (docs/post-mail.md). Two kinds of rows live in ONE small KV document:
+// Pure helpers for /api/post-log — the record behind the daily draft notification
+// (docs/post-notify.md). Two kinds of rows live in ONE small KV document:
 //
-//   mails[date]  written by the machine (scripts/post-mail.mjs) after each
+//   sends[date]  written by the machine (scripts/post-notify.mjs) after each
 //                daily run: how many drafts went out, and in which mode.
 //   weeks[sun]   written by the owner on /ops once a week (Sunday): posts
 //                made that week and a 1–5 mood score. Under a minute.
 //
-// judge() applies the pre-agreed lines (docs/post-mail.md §判定の線) to that
+// judge() applies the pre-agreed lines (docs/post-notify.md §判定の線) to that
 // document. It is a rule lookup, not an opinion: the window is fixed from the
-// first LIVE mail, and the verdict only becomes final after the window ends
+// first LIVE notification, and the verdict only becomes final after the window ends
 // (mid-window it reports progress, never an early call).
 //
-// No I/O, no env — unit-tested by scripts/test-postmail.mjs.
+// No I/O, no env — unit-tested by scripts/test-postnotify.mjs.
 
 export const POST_LOG_KEY = "postlog:v1";
 
-export type MailMode = "live" | "dry_run";
+export type SendMode = "live" | "dry_run";
 
-export interface MailRow {
+export interface SendRow {
   drafts: number;
-  mode: MailMode;
+  mode: SendMode;
   at: string;
 }
 
@@ -32,9 +32,9 @@ export interface WeekRow {
 }
 
 export interface PostLog {
-  /** JST date (YYYY-MM-DD) of the first live mail — starts the window. */
+  /** JST date (YYYY-MM-DD) of the first live notification — starts the window. */
   first_live: string | null;
-  mails: Record<string, MailRow>;
+  sends: Record<string, SendRow>;
   /** Keyed by the Sunday (JST) that closes the Mon–Sun week. */
   weeks: Record<string, WeekRow>;
 }
@@ -53,7 +53,7 @@ export const LINES = {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function emptyLog(): PostLog {
-  return { first_live: null, mails: {}, weeks: {} };
+  return { first_live: null, sends: {}, weeks: {} };
 }
 
 /** Parse the stored document, dropping anything malformed. */
@@ -68,9 +68,9 @@ export function parseLog(raw: string | null): PostLog {
   }
   if (obj === null || typeof obj !== "object") return log;
   if (typeof obj.first_live === "string" && DATE_RE.test(obj.first_live)) log.first_live = obj.first_live;
-  for (const [d, r] of Object.entries(obj.mails ?? {})) {
-    const m = toMailRow(d, r);
-    if (m) log.mails[d] = m;
+  for (const [d, r] of Object.entries(obj.sends ?? {})) {
+    const m = toSendRow(d, r);
+    if (m) log.sends[d] = m;
   }
   for (const [d, r] of Object.entries(obj.weeks ?? {})) {
     const w = toWeekRow(d, r);
@@ -79,7 +79,7 @@ export function parseLog(raw: string | null): PostLog {
   return log;
 }
 
-function toMailRow(date: string, r: any): MailRow | null {
+function toSendRow(date: string, r: any): SendRow | null {
   if (!DATE_RE.test(date) || r === null || typeof r !== "object") return null;
   if (!Number.isInteger(r.drafts) || r.drafts < 0 || r.drafts > 10) return null;
   if (r.mode !== "live" && r.mode !== "dry_run") return null;
@@ -124,17 +124,17 @@ export function defaultRecordWeek(today: string): string {
 // ---- writes -----------------------------------------------------------------
 
 export type LogInput =
-  | { kind: "mail"; date: string; drafts: number; mode: MailMode }
+  | { kind: "send"; date: string; drafts: number; mode: SendMode }
   | { kind: "weekly"; week: string; posts: number; mood: number };
 
 /** Validate a POST body. Returns the typed input, or an error string. */
 export function parseLogInput(body: any): LogInput | string {
   if (body === null || typeof body !== "object") return "body must be a JSON object";
-  if (body.kind === "mail") {
+  if (body.kind === "send") {
     if (!DATE_RE.test(body.date ?? "")) return "date must be YYYY-MM-DD";
     if (!Number.isInteger(body.drafts) || body.drafts < 0 || body.drafts > 10) return "drafts must be an integer 0–10";
     if (body.mode !== "live" && body.mode !== "dry_run") return 'mode must be "live" or "dry_run"';
-    return { kind: "mail", date: body.date, drafts: body.drafts, mode: body.mode };
+    return { kind: "send", date: body.date, drafts: body.drafts, mode: body.mode };
   }
   if (body.kind === "weekly") {
     if (!isSunday(body.week ?? "")) return "week must be a Sunday (YYYY-MM-DD)";
@@ -142,17 +142,17 @@ export function parseLogInput(body: any): LogInput | string {
     if (!Number.isInteger(body.mood) || body.mood < 1 || body.mood > 5) return "mood must be an integer 1–5";
     return { kind: "weekly", week: body.week, posts: body.posts, mood: body.mood };
   }
-  return 'kind must be "mail" or "weekly"';
+  return 'kind must be "send" or "weekly"';
 }
 
 /** Apply one validated write. Returns a new document (input untouched). */
 export function applyLogInput(log: PostLog, input: LogInput, nowIso: string): PostLog {
-  const next: PostLog = { first_live: log.first_live, mails: { ...log.mails }, weeks: { ...log.weeks } };
-  if (input.kind === "mail") {
-    const prev = next.mails[input.date];
+  const next: PostLog = { first_live: log.first_live, sends: { ...log.sends }, weeks: { ...log.weeks } };
+  if (input.kind === "send") {
+    const prev = next.sends[input.date];
     // A dry run never overwrites a live row of the same day.
     if (!(prev?.mode === "live" && input.mode === "dry_run")) {
-      next.mails[input.date] = { drafts: input.drafts, mode: input.mode, at: nowIso };
+      next.sends[input.date] = { drafts: input.drafts, mode: input.mode, at: nowIso };
     }
     if (input.mode === "live" && (next.first_live === null || input.date < next.first_live)) {
       next.first_live = input.date;
@@ -164,8 +164,8 @@ export function applyLogInput(log: PostLog, input: LogInput, nowIso: string): Po
 }
 
 /** Has today's run already happened for `mode`? (live also covers dry_run.) */
-export function alreadyRan(log: PostLog, date: string, mode: MailMode): boolean {
-  const row = log.mails[date];
+export function alreadyRan(log: PostLog, date: string, mode: SendMode): boolean {
+  const row = log.sends[date];
   if (!row) return false;
   return row.mode === "live" || row.mode === mode;
 }
@@ -221,7 +221,7 @@ function judgeWindow(log: PostLog, index: number, from: string, today: string): 
     const sun = addDays(mon, 6);
     let drafts = 0;
     for (let d = 0; d < 7; d++) {
-      const row = log.mails[addDays(mon, d)];
+      const row = log.sends[addDays(mon, d)];
       if (row?.mode === "live") drafts += row.drafts;
     }
     const w = log.weeks[sun];
@@ -259,7 +259,7 @@ export function judge(log: PostLog, today: string): Judgment {
       status: "not_started",
       first_live: null,
       windows: [],
-      summary: "まだ本番メールが1通も届いていません（dry-run 中）。初回の本番送信の日から判定期間が始まります。",
+      summary: "まだ本番の通知が1件も届いていません（dry-run 中）。初回の本番通知の日から判定期間が始まります。",
     };
   }
   const windows: WindowResult[] = [];

@@ -1,0 +1,69 @@
+# .github/workflows/post-notify.yml
+#
+# Daily draft notification (docs/post-notify.md). Ticks every hour;
+# scripts/post-notify.mjs decides whether this tick sends — the send hour and
+# the default mode live in scripts/post-notify.config.json (send_hour_jst,
+# default 12 = 12:00 JST; mode, default dry_run), so changing either never
+# touches this file. Once a day is enforced by the run log (/api/post-log).
+#
+# Sends to the owner's phone via ntfy (secret NTFY_TOPIC, already used by
+# x-reply.yml). Variable POST_NOTIFY_MODE overrides the config: "live" sends,
+# "off" stops everything (kill switch).
+#
+# Never posts to X. Tapping the notification opens X's compose screen with
+# the text filled in; the owner posts by hand.
+
+name: post-notify
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "通知時刻と1日1回のチェックを無視して今すぐ実行（dry-run / live の切り替えはそのまま）"
+        type: boolean
+        default: false
+  schedule:
+    # Every hour at :17 (off the :00 rush, where GitHub delays/drops more runs).
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: post-notify
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: stop switch
+        id: gate
+        env:
+          MODE: ${{ vars.POST_NOTIFY_MODE }}
+        run: |
+          m="$(printf '%s' "${MODE}" | tr 'A-Z' 'a-z' | tr -d '[:space:]')"
+          if [ "${m}" = "off" ]; then
+            echo "POST_NOTIFY_MODE=off — stopped."; echo "go=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.gate.outputs.go == 'true'
+
+      - uses: actions/setup-node@v4
+        if: steps.gate.outputs.go == 'true'
+        with:
+          node-version: 24 # type-stripped .ts import needs Node >= 22.18
+
+      - name: build (and send when live)
+        if: steps.gate.outputs.go == 'true'
+        env:
+          POST_NOTIFY_MODE: ${{ vars.POST_NOTIFY_MODE }}
+          PUBLISH_TOKEN: ${{ secrets.PUBLISH_TOKEN }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          POST_NOTIFY_BLOCK_WORDS: ${{ secrets.POST_NOTIFY_BLOCK_WORDS }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: node scripts/post-notify.mjs ${FORCE}

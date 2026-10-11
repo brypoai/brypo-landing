@@ -1,11 +1,11 @@
 // functions/api/post-log.ts
 //
-// /api/post-log — owner-only record behind the daily draft mail
-// (docs/post-mail.md). Gated by PUBLISH_TOKEN, like every owner endpoint.
+// /api/post-log — owner-only record behind the daily draft notification
+// (docs/post-notify.md). Gated by PUBLISH_TOKEN, like every owner endpoint.
 //
-//   GET   → { log, judgment, today }   read by /ops and by post-mail.mjs
+//   GET   → { log, judgment, today }   read by /ops and by post-notify.mjs
 //                                       (to skip a day that already ran)
-//   POST  { kind: "mail", date, drafts, mode }   machine row (post-mail.mjs)
+//   POST  { kind: "send", date, drafts, mode }   machine row (post-notify.mjs)
 //   POST  { kind: "weekly", week, posts, mood }  owner row (/ops, Sundays)
 //
 // One small JSON document in TRY_KV (key postlog:v1, no TTL). Read-modify-

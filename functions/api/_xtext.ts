@@ -1,8 +1,8 @@
 // functions/api/_xtext.ts
 //
 // X (Twitter) post-length helpers shared by /api/post-draft (the /ops
-// "X で投稿" link) and scripts/post-mail.mjs (the daily draft mail). Pure — no
-// I/O, no env — so scripts/test-postmail.mjs can unit-test it under Node.
+// "X で投稿" link) and scripts/post-notify.mjs (the daily draft notification). Pure — no
+// I/O, no env — so scripts/test-postnotify.mjs can unit-test it under Node.
 //
 // weightedLength() follows twitter-text v3's weighting (the config X uses to
 // enforce the 280 limit), implemented here without the npm package because
@@ -46,7 +46,7 @@ const LIGHT_RANGES: ReadonlyArray<readonly [number, number]> = [
 // and a 2-letter ending like "file.ts" is not always a real TLD. Counting
 // those as 23 can only make us trim a draft X would have accepted — never
 // open X's compose screen over the limit. Checked against twitter-text 3.1.0
-// on 20 strings (scripts/test-postmail.mjs pins the same cases): 19 exact,
+// on 20 strings (scripts/test-postnotify.mjs pins the same cases): 19 exact,
 // 1 over-count (89 vs 79), 0 under-counts.
 const URL_RE =
   /https?:\/\/[\x21-\x7e]+|\b[a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:com|net|org|info|biz|dev|app|xyz|blog|tech|site|online|page|[a-z]{2})\b(?:\/[\x21-\x7e]*)?/gi;

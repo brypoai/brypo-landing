@@ -5,5 +5,5 @@ node_modules/
 # claude — リモートセッションの一時出力
 .claude/tmp/
 
-# post-mail.mjs の出力（dry-run のメール本文）
+# post-notify.mjs の出力（dry-run の通知本文）
 out/

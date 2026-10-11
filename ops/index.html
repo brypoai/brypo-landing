@@ -8,8 +8,8 @@
 <!-- 毎日1画面で L0-1（2026-08-10〜09-07）の未達を確認するためだけの内部ページ。
      指標は増やさない。読むのは既存の GET /api/metrics のみ（同一オリジン・読み取り専用）。
      週次推移と実行チェックの状態は localStorage だけに置く（サーバ側に状態を作らない）。
-     例外: 「発信の記録」だけは GET/POST /api/post-log（KV）に置く — 毎日の文案メール
-     （docs/post-mail.md）の送信記録と並べて6週間の判定に使うため、端末をまたいで残す必要がある。 -->
+     例外: 「発信の記録」だけは GET/POST /api/post-log（KV）に置く — 毎日の文案通知
+     （docs/post-notify.md）の送信記録と並べて6週間の判定に使うため、端末をまたいで残す必要がある。 -->
 <style>
 :root { --bg:#0a0a0f; --panel:#14141c; --fg:#f5f5f0; --muted:#8f8f99; --line:#1f1f2a; --ok:#3ba55d; --ng:#e8553b; }
 * { box-sizing:border-box; }
@@ -271,8 +271,8 @@ async function loadDraft(token) {
   renderPost({ text: d.text, angle: d.angle ?? '', weighted: d.weighted_length, intentUrl: d.intent_url });
 }
 
-// --- 発信の記録: GET/POST /api/post-log（毎日のメール送信記録＋日曜の手入力）---
-// 判定の線は docs/post-mail.md。判定そのものはサーバ（_postlog.ts の judge）が出す。
+// --- 発信の記録: GET/POST /api/post-log（毎日の通知の送信記録＋日曜の手入力）---
+// 判定の線は docs/post-notify.md。判定そのものはサーバ（_postlog.ts の judge）が出す。
 const VERDICT = { continue: '続ける', stop: 'やめる', neither: 'どちらでもない（延長）' };
 const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const dow = (d) => new Date(d + 'T00:00:00Z').getUTCDay();
@@ -330,7 +330,7 @@ function renderPostLog(d) {
   $('wtable').innerHTML = rows.length
     ? rows.map((w) => `<tr><td>${md(w.from)}–${md(w.sunday)}</td><td>${w.drafts}</td>` +
         `<td>${w.posts ?? (w.sunday <= today ? '未記録' : '—')}</td><td>${w.mood ?? '—'}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="rng">初回の本番メールが届いた翌週から表示します</td></tr>';
+    : '<tr><td colspan="4" class="rng">初回の本番通知が届いた翌週から表示します</td></tr>';
 }
 
 async function loadPostLog(token) {

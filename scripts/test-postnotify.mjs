@@ -1,14 +1,14 @@
 /**
- * scripts/test-postmail.mjs
+ * scripts/test-postnotify.mjs
  *
- * Unit tests for the daily draft mail (docs/post-mail.md):
+ * Unit tests for the daily draft notification (docs/post-notify.md):
  *   - functions/api/_xtext.ts    X weighted length, 280 fitting, intent URL
- *   - functions/api/_postmail.ts config, schedule, guard, mail builder
+ *   - functions/api/_postnotify.ts config, schedule, guard, notification builder
  *   - functions/api/_postlog.ts  run log + the pre-agreed judgment lines
- *   - scripts/post-mail.mjs      end-to-end dry run / stop switch / live
+ *   - scripts/post-notify.mjs    end-to-end dry run / stop switch / live
  *                                without secrets (fixture, no network)
  *
- *   node scripts/test-postmail.mjs
+ *   node scripts/test-postnotify.mjs
  *
  * Requires Node >= 22.18 (type-stripped .ts imports). No deps, no network.
  */
@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 import { X_INTENT_BASE, fitToWeighted, weightedLength, xIntentUrl } from "../functions/api/_xtext.ts";
 import {
   DEFAULT_CONFIG,
-  buildMail,
+  buildNotice,
   guardHits,
   isDue,
   isLastChance,
@@ -29,7 +29,7 @@ import {
   parseBlockWords,
   parseConfig,
   parseMode,
-} from "../functions/api/_postmail.ts";
+} from "../functions/api/_postnotify.ts";
 import {
   addDays,
   alreadyRan,
@@ -127,17 +127,22 @@ t("intent URL = x.com/intent/tweet?text= + URL-encoded text (round-trips)", () =
   eq(new URL(url).searchParams.get("text"), text);
 });
 
-// ---- _postmail: config / mode / schedule ------------------------------------
+// ---- _postnotify: config / mode / schedule ------------------------------------
 
-console.log("_postmail");
+console.log("_postnotify");
 t("config: defaults are 12:00 JST and brypo.com", () => {
   eq(DEFAULT_CONFIG.send_hour_jst, 12);
   eq(parseConfig(null), DEFAULT_CONFIG);
 });
 t("config: the repo file parses to the defaults", () => {
   const here = dirname(fileURLToPath(import.meta.url));
-  const file = JSON.parse(readFileSync(join(here, "post-mail.config.json"), "utf8"));
+  const file = JSON.parse(readFileSync(join(here, "post-notify.config.json"), "utf8"));
   eq(parseConfig(file), DEFAULT_CONFIG);
+});
+t("config: mode is dry_run unless the file says exactly live", () => {
+  eq(parseConfig({ mode: "live" }).mode, "live");
+  eq(parseConfig({ mode: "LIVE" }).mode, "dry_run");
+  eq(parseConfig({}).mode, "dry_run");
 });
 t("config: bad values fall back, good ones apply", () => {
   const c = parseConfig({ send_hour_jst: 24, retry_hours: -1, base_url: "http://x", ops_url: 5 });
@@ -145,9 +150,14 @@ t("config: bad values fall back, good ones apply", () => {
   eq(parseConfig({ send_hour_jst: 7, base_url: "https://example.com/" }).send_hour_jst, 7);
   eq(parseConfig({ base_url: "https://example.com/" }).base_url, "https://example.com");
 });
-t("mode: only the exact words arm live / off; everything else is dry_run", () => {
+t("mode: Variable wins when set; unset → config mode; unknown words → dry_run", () => {
   eq(parseMode(undefined), "dry_run");
   eq(parseMode(""), "dry_run");
+  eq(parseMode(undefined, "live"), "live", "config live");
+  eq(parseMode("", "live"), "live", "empty Variable = unset");
+  eq(parseMode("off", "live"), "off", "kill switch beats config");
+  eq(parseMode("dry_run", "live"), "dry_run", "Variable can force dry run");
+  eq(parseMode("true", "live"), "dry_run", "unknown word never sends");
   eq(parseMode("true"), "dry_run");
   eq(parseMode("LIVE"), "live");
   eq(parseMode(" off "), "off");
@@ -163,7 +173,7 @@ t("isDue / isLastChance around the send hour", () => {
   eq(isLastChance(23, { ...cfg, send_hour_jst: 22 }), true, "capped at 23");
 });
 
-// ---- _postmail: guard -------------------------------------------------------
+// ---- _postnotify: guard -------------------------------------------------------
 
 t("guard: a plain build-in-public draft is clean", () => {
   eq(guardHits("今日は /try の入力欄を直した。使った人は3人、うち1人が翌日も来た。brypo.com/try"), []);
@@ -185,55 +195,47 @@ t("guard: owner block words match case-insensitively and report only a label", (
   eq(guardHits("無関係", words), []);
 });
 
-// ---- _postmail: mail --------------------------------------------------------
+// ---- _postnotify: notification ---------------------------------------------
 
 const DRAFT = { text: "今日は /try の入力欄を直した。使った人は3人。 brypo.com/try", angle: "小さな改善の報告" };
-t("mail: plain text and HTML both carry the same X intent link", () => {
-  const m = buildMail({ date: "2026-10-12", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
+t("notice: tapping opens the X intent link; the button carries the same link", () => {
+  const n = buildNotice({ date: "2026-10-12", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
   const url = xIntentUrl(DRAFT.text);
-  eq(m.drafts, 1);
-  assert(m.text.includes(url), "text link");
-  assert(m.html.includes(url.replace(/&/g, "&amp;")), "html link");
-  assert(m.html.includes(">X で投稿</a>"), "button label");
-  assert(m.subject.includes("10/12 月"), m.subject);
-  assert(!/undefined|null/.test(m.text), "no undefined/null in text");
+  eq(n.drafts, 1);
+  eq(n.click, url);
+  eq(n.actions[0], { action: "view", label: "X で投稿", url, clear: true });
+  assert(n.message.startsWith(DRAFT.text), "draft first");
+  assert(n.title.includes("10/12 月"), n.title);
+  assert(n.actions.length <= 3, "ntfy allows at most 3 actions");
+  assert(!/undefined|null/.test(n.message + n.title), "no undefined/null");
 });
-t("mail: over-long draft is trimmed to 280 for the link and says so", () => {
-  const m = buildMail({ date: "2026-10-12", draft: { text: "い".repeat(160), angle: "a" }, reason: null, cfg: DEFAULT_CONFIG });
-  assert(m.meta.trimmed && m.meta.weighted <= 280, JSON.stringify(m.meta));
-  const q = new URL(m.text.split("\n").find((l) => l.startsWith("https://x.com/"))).searchParams.get("text");
-  assert(weightedLength(q) <= 280, "link text fits");
-  assert(m.text.includes("末尾を切りました"), "notice");
+t("notice: over-long draft is trimmed to 280 for the link and says so", () => {
+  const n = buildNotice({ date: "2026-10-12", draft: { text: "い".repeat(160), angle: "a" }, reason: null, cfg: DEFAULT_CONFIG });
+  assert(n.meta.trimmed && n.meta.weighted <= 280, JSON.stringify(n.meta));
+  assert(weightedLength(new URL(n.click).searchParams.get("text")) <= 280, "link text fits");
+  assert(n.message.includes("末尾を切りました"), "notice");
 });
-t("mail: a guard hit keeps the draft but removes the link (counts 0 drafts)", () => {
-  const m = buildMail({ date: "2026-10-12", draft: { text: "月額980円で出します", angle: "a" }, reason: null, cfg: DEFAULT_CONFIG });
-  eq(m.drafts, 0);
-  assert(!m.text.includes("x.com/intent"), "no link in text");
-  assert(!m.html.includes("x.com/intent"), "no link in html");
-  assert(m.text.includes("リンクを外しています"), "notice");
+t("notice: a guard hit keeps the draft but removes the link (counts 0 drafts)", () => {
+  const n = buildNotice({ date: "2026-10-12", draft: { text: "月額980円で出します", angle: "a" }, reason: null, cfg: DEFAULT_CONFIG });
+  eq(n.drafts, 0);
+  eq(n.click, DEFAULT_CONFIG.ops_url, "tap goes to /ops, not X");
+  assert(!JSON.stringify(n).includes("x.com/intent"), "no X link anywhere");
+  assert(n.message.includes("リンクを外しています"), "notice");
 });
-t("mail: no draft → says why, no link", () => {
-  const m = buildMail({ date: "2026-10-12", draft: null, reason: "今日の予算上限に達しました", cfg: DEFAULT_CONFIG });
-  eq(m.drafts, 0);
-  assert(m.subject.endsWith("作れませんでした"), m.subject);
-  assert(m.text.includes("今日の予算上限に達しました"));
-  assert(!m.text.includes("x.com/intent"));
+t("notice: no draft → says why, no link", () => {
+  const n = buildNotice({ date: "2026-10-12", draft: null, reason: "今日の予算上限に達しました", cfg: DEFAULT_CONFIG });
+  eq(n.drafts, 0);
+  assert(n.title.endsWith("作れませんでした"), n.title);
+  assert(n.message.includes("今日の予算上限に達しました"));
+  assert(!JSON.stringify(n).includes("x.com/intent"));
 });
-t("mail: model output is HTML-escaped", () => {
-  const m = buildMail({ date: "2026-10-12", draft: { text: "<script>x</script>", angle: '"a"' }, reason: null, cfg: DEFAULT_CONFIG });
-  assert(!m.html.includes("<script>"), "raw script tag");
-  assert(m.html.includes("&lt;script&gt;"), "escaped");
-});
-t("mail: Sunday adds the weekly-record link, weekdays do not", () => {
-  const sun = buildMail({ date: "2026-10-11", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
-  const mon = buildMail({ date: "2026-10-12", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
-  assert(sun.text.includes("https://brypo.com/ops/#weekly"), "sunday text");
-  assert(sun.html.includes("https://brypo.com/ops/#weekly"), "sunday html");
-  assert(!mon.text.includes("#weekly"), "monday");
-});
-t("mail: every mail names the stop switch", () => {
-  const m = buildMail({ date: "2026-10-12", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
-  assert(m.text.includes("POST_MAIL_MODE=off") && m.html.includes("POST_MAIL_MODE=off"));
+t("notice: Sunday adds the weekly-record button, weekdays do not", () => {
+  const sun = buildNotice({ date: "2026-10-11", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
+  const mon = buildNotice({ date: "2026-10-12", draft: DRAFT, reason: null, cfg: DEFAULT_CONFIG });
+  assert(sun.actions.some((a) => a.url === "https://brypo.com/ops/#weekly"), "sunday button");
+  assert(sun.message.includes("今週の投稿数"), "sunday text");
+  assert(sun.actions.length <= 3, "still ≤ 3 actions");
+  assert(!mon.actions.some((a) => a.url.endsWith("#weekly")), "monday");
 });
 
 // ---- _postlog ---------------------------------------------------------------
@@ -246,31 +248,31 @@ t("parseLog tolerates absent/corrupt input and drops bad rows", () => {
   const log = parseLog(
     JSON.stringify({
       first_live: "2026-10-12",
-      mails: { "2026-10-12": { drafts: 1, mode: "live" }, bad: { drafts: 1, mode: "live" }, "2026-10-13": { drafts: 1, mode: "x" } },
+      sends: { "2026-10-12": { drafts: 1, mode: "live" }, bad: { drafts: 1, mode: "live" }, "2026-10-13": { drafts: 1, mode: "x" } },
       weeks: { "2026-10-18": { posts: 3, mood: 4 }, "2026-10-17": { posts: 3, mood: 4 }, "2026-10-25": { posts: 3, mood: 9 } },
     }),
   );
-  eq(Object.keys(log.mails), ["2026-10-12"]);
+  eq(Object.keys(log.sends), ["2026-10-12"]);
   eq(Object.keys(log.weeks), ["2026-10-18"], "only valid Sunday rows");
 });
 t("parseLogInput validates both kinds", () => {
-  eq(parseLogInput({ kind: "mail", date: "2026-10-12", drafts: 1, mode: "live" }).kind, "mail");
+  eq(parseLogInput({ kind: "send", date: "2026-10-12", drafts: 1, mode: "live" }).kind, "send");
   eq(parseLogInput({ kind: "weekly", week: "2026-10-18", posts: 4, mood: 5 }).kind, "weekly");
   assert(typeof parseLogInput({ kind: "weekly", week: "2026-10-17", posts: 4, mood: 5 }) === "string", "not a Sunday");
   assert(typeof parseLogInput({ kind: "weekly", week: "2026-10-18", posts: 4, mood: 6 }) === "string", "mood 6");
   assert(typeof parseLogInput({ kind: "weekly", week: "2026-10-18", posts: 1.5, mood: 3 }) === "string", "fractional");
-  assert(typeof parseLogInput({ kind: "mail", date: "2026-10-12", drafts: 1, mode: "auto" }) === "string", "mode");
+  assert(typeof parseLogInput({ kind: "send", date: "2026-10-12", drafts: 1, mode: "auto" }) === "string", "mode");
   assert(typeof parseLogInput({ kind: "post" }) === "string", "kind");
   assert(typeof parseLogInput(null) === "string", "null");
 });
-t("a live mail sets first_live; a later dry run never overwrites it", () => {
-  let log = applyLogInput(emptyLog(), { kind: "mail", date: "2026-10-12", drafts: 1, mode: "dry_run" }, NOW);
+t("a live send sets first_live; a later dry run never overwrites it", () => {
+  let log = applyLogInput(emptyLog(), { kind: "send", date: "2026-10-12", drafts: 1, mode: "dry_run" }, NOW);
   eq(log.first_live, null);
   assert(alreadyRan(log, "2026-10-12", "dry_run") && !alreadyRan(log, "2026-10-12", "live"), "dry run then live same day");
-  log = applyLogInput(log, { kind: "mail", date: "2026-10-12", drafts: 1, mode: "live" }, NOW);
+  log = applyLogInput(log, { kind: "send", date: "2026-10-12", drafts: 1, mode: "live" }, NOW);
   eq(log.first_live, "2026-10-12");
-  log = applyLogInput(log, { kind: "mail", date: "2026-10-12", drafts: 0, mode: "dry_run" }, NOW);
-  eq(log.mails["2026-10-12"].mode, "live");
+  log = applyLogInput(log, { kind: "send", date: "2026-10-12", drafts: 0, mode: "dry_run" }, NOW);
+  eq(log.sends["2026-10-12"].mode, "live");
   assert(alreadyRan(log, "2026-10-12", "dry_run"), "live covers dry_run");
 });
 t("week helpers: Mon–Sun weeks keyed by Sunday", () => {
@@ -283,11 +285,11 @@ t("week helpers: Mon–Sun weeks keyed by Sunday", () => {
   eq(windowStart("2026-10-18"), "2026-10-19"); // Sunday → next day
 });
 
-/** Log with first live mail on Mon 2026-10-12 and one live draft every day for n weeks. */
+/** Log with first live notification on Mon 2026-10-12 and one live draft every day for n weeks. */
 function liveLog(weeks) {
   let log = emptyLog();
   for (let d = 0; d < 7 * 12; d++) {
-    log = applyLogInput(log, { kind: "mail", date: addDays("2026-10-12", d), drafts: 1, mode: "live" }, NOW);
+    log = applyLogInput(log, { kind: "send", date: addDays("2026-10-12", d), drafts: 1, mode: "live" }, NOW);
   }
   weeks.forEach(([posts, mood], i) => {
     if (posts === null) return;
@@ -298,7 +300,7 @@ function liveLog(weeks) {
 const AFTER1 = "2026-11-23"; // day after week 6 (Sun 11-22)
 const AFTER2 = "2027-01-04"; // day after week 12 (Sun 01-03)
 
-t("judge: not started before the first live mail", () => {
+t("judge: not started before the first live notification", () => {
   eq(judge(emptyLog(), "2026-10-11").status, "not_started");
 });
 t("judge: mid-window reports progress, never an early verdict", () => {
@@ -341,61 +343,55 @@ t("judge: reference post rate = posts / live drafts delivered", () => {
   eq(j.windows[0].postRate, 0.5); // 21 posts / 42 drafts
 });
 
-// ---- runner (scripts/post-mail.mjs) — offline ---------------------------------
+// ---- runner (scripts/post-notify.mjs) — offline -------------------------------
 
-console.log("post-mail.mjs");
+console.log("post-notify.mjs");
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
-const tmp = mkdtempSync(join(tmpdir(), "postmail-"));
+const tmp = mkdtempSync(join(tmpdir(), "postnotify-"));
 const fixture = join(tmp, "draft.json");
 writeFileSync(fixture, JSON.stringify(DRAFT));
-const outFile = (d) => join(root, "out", "post-mail", `${d}.txt`);
+const outFile = (d) => join(root, "out", "post-notify", `${d}.json`);
 
 function run(args, env = {}) {
-  return spawnSync(process.execPath, [join(here, "post-mail.mjs"), ...args], {
+  return spawnSync(process.execPath, [join(here, "post-notify.mjs"), ...args], {
     env: { PATH: process.env.PATH, ...env },
     encoding: "utf8",
   });
 }
 
-t("dry run (default, no secrets): writes the mail with the X link, sends nothing", () => {
+t("dry run (config default, no secrets): writes the notification with the X link, sends nothing", () => {
   const d = "2026-10-12";
   rmSync(outFile(d), { force: true });
   const r = run(["--fixture", fixture, "--now", "2026-10-12T03:30:00Z"]);
   eq(r.status, 0, r.stdout + r.stderr);
   assert(r.stdout.includes("mode=dry_run"), r.stdout);
   assert(r.stdout.includes("nothing sent"), r.stdout);
-  const txt = readFileSync(outFile(d), "utf8");
-  assert(txt.includes(xIntentUrl(DRAFT.text)), "link in file");
-  assert(txt.includes("To: (MAIL_TO)"), "placeholder recipient only");
-  assert(existsSync(join(root, "out", "post-mail", `${d}.html`)), "html file");
+  const out = JSON.parse(readFileSync(outFile(d), "utf8"));
+  eq(out.click, xIntentUrl(DRAFT.text));
+  eq(out.topic, "(NTFY_TOPIC)", "placeholder topic only");
+  assert(!("drafts" in out) && !("meta" in out), "only the ntfy payload is written");
 });
 t("before the send hour: does nothing", () => {
   const r = run(["--fixture", fixture, "--now", "2026-10-12T01:30:00Z"]);
   eq(r.status, 0);
   assert(r.stdout.includes("not yet"), r.stdout);
 });
-t("stop switch POST_MAIL_MODE=off: stops before anything else", () => {
-  const r = run(["--fixture", fixture, "--force"], { POST_MAIL_MODE: "off" });
+t("stop switch POST_NOTIFY_MODE=off: stops before anything else", () => {
+  const r = run(["--fixture", fixture, "--force"], { POST_NOTIFY_MODE: "off" });
   eq(r.status, 0);
   assert(r.stdout.includes("stopped"), r.stdout);
   assert(!r.stdout.includes("built"), "nothing built");
 });
-t("live without secrets: fails loudly, names the missing keys, sends nothing", () => {
-  const r = run(["--fixture", fixture, "--force"], { POST_MAIL_MODE: "live" });
+t("live without the topic: fails loudly, names the missing key, sends nothing", () => {
+  const r = run(["--fixture", fixture, "--force"], { POST_NOTIFY_MODE: "live" });
   eq(r.status, 1);
-  assert(r.stdout.includes("RESEND_API_KEY") && r.stdout.includes("MAIL_TO"), r.stdout);
+  assert(r.stdout.includes("NTFY_TOPIC"), r.stdout);
   assert(r.stdout.includes("nothing sent"), r.stdout);
 });
-t("live: secret values never reach the log", () => {
-  const r = run(["--fixture", fixture, "--force"], {
-    POST_MAIL_MODE: "live",
-    MAIL_TO: "secret-recipient@example.invalid",
-    POST_MAIL_BLOCK_WORDS: "SecretCorp",
-  });
-  // No RESEND_API_KEY → fails before any network call.
-  eq(r.status, 1);
-  assert(!(r.stdout + r.stderr).includes("secret-recipient"), "address leaked");
+t("block words never reach the log", () => {
+  const r = run(["--fixture", fixture, "--force"], { POST_NOTIFY_BLOCK_WORDS: "SecretCorp" });
+  eq(r.status, 0);
   assert(!(r.stdout + r.stderr).includes("SecretCorp"), "block word leaked");
 });
 rmSync(tmp, { recursive: true, force: true });

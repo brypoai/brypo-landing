@@ -293,11 +293,13 @@ tapping the notification opens X's compose screen with the text prefilled (the
 owner posts by hand). **Full spec, judgment lines and owner steps:
 `docs/post-notify.md`.**
 
-- Driver: `.github/workflows/post-notify.yml` (every 15 min). The first tick
-  inside the lead window (`lead_hours`, default 6) prepares the draft and posts
-  it to ntfy with a `delay`, so it arrives exactly at the send hour however
-  late GitHub's cron runs (1.5–5 h measured here); a tick after the send hour
-  delivers at once, and a forced run always does. The send hour
+- Driver: `.github/workflows/post-notify.yml` (every 15 min). Each tick books,
+  with ntfy's scheduled delivery (`delay`), whichever of today's and
+  tomorrow's send hour is not booked yet, each with that day's draft
+  (`/api/post-draft?date=` accepts today or tomorrow). One tick at any time of
+  day lands the next noon, however late or rarely GitHub's cron fires (1.5–5 h
+  late and most ticks dropped, measured here). Today's, if its hour has passed,
+  goes out at once; a forced run always delivers today's at once. The send hour
   (`send_hour_jst`, default 12 JST) and default mode (`mode`, default
   `dry_run`) are in `scripts/post-notify.config.json`.
 - Variable `POST_NOTIFY_MODE` overrides the config (`live` / `dry_run`;

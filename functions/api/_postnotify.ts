@@ -25,14 +25,6 @@ export interface NotifyConfig {
   send_hour_jst: number;
   /** Hours after send_hour to keep retrying a failed draft fetch. */
   retry_hours: number;
-  /**
-   * Hours before send_hour from which a run may prepare the day's
-   * notification and hand it to ntfy for scheduled delivery at send_hour.
-   * GitHub's cron runs late (1.5–5 h measured on this repo) or not at all;
-   * preparing early and letting ntfy deliver on the hour makes the arrival
-   * time independent of when the workflow happened to run.
-   */
-  lead_hours: number;
   /** Where the runner fetches the draft / writes the log. */
   base_url: string;
   /** Board link (notification fallback tap target and the Sunday record link). */
@@ -44,7 +36,6 @@ export interface NotifyConfig {
 export const DEFAULT_CONFIG: NotifyConfig = {
   send_hour_jst: 12,
   retry_hours: 3,
-  lead_hours: 6,
   base_url: "https://brypo.com",
   ops_url: "https://brypo.com/ops/",
   mode: "dry_run",
@@ -59,9 +50,6 @@ export function parseConfig(obj: any): NotifyConfig {
   }
   if (Number.isInteger(obj.retry_hours) && obj.retry_hours >= 0 && obj.retry_hours <= 12) {
     c.retry_hours = obj.retry_hours;
-  }
-  if (Number.isInteger(obj.lead_hours) && obj.lead_hours >= 0 && obj.lead_hours <= 12) {
-    c.lead_hours = obj.lead_hours;
   }
   if (typeof obj.base_url === "string" && obj.base_url.startsWith("https://")) c.base_url = obj.base_url.replace(/\/+$/, "");
   if (typeof obj.ops_url === "string" && obj.ops_url.startsWith("https://")) c.ops_url = obj.ops_url;
@@ -98,10 +86,9 @@ export function sendInstant(date: string, cfg: NotifyConfig): number {
   return jstInstant(date, cfg.send_hour_jst);
 }
 
-/** May a run at `nowMs` prepare today's notification? (from lead_hours
- *  before the send hour; earlier runs exit without touching the network) */
-export function isWindowOpen(nowMs: number, date: string, cfg: NotifyConfig): boolean {
-  return nowMs >= sendInstant(date, cfg) - cfg.lead_hours * 3600_000;
+/** The day after `date` (YYYY-MM-DD). */
+export function nextDate(date: string): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 }
 
 /** Last moment of the day on which a failed draft fetch is still retried;
@@ -112,6 +99,34 @@ export function isLastChance(nowMs: number, date: string, cfg: NotifyConfig): bo
 
 /** Closer to the send hour than this, deliver now (ntfy's own floor is 10 s). */
 export const MIN_DELAY_MS = 30_000;
+
+/** One delivery a tick should take care of. */
+export interface Slot {
+  /** JST date the notification is for (and is recorded under). */
+  date: string;
+  /** Today's send hour has already passed: deliver now, not on the hour. */
+  late: boolean;
+}
+
+/**
+ * The deliveries this tick should book, oldest first, skipping any already
+ * booked: today's (scheduled for the send hour, or — if that has passed — a
+ * late send now) and tomorrow's (scheduled). Booking a day ahead is what
+ * makes the arrival time independent of GitHub's cron, which runs hours late
+ * or not at all on this repo: one tick at any time of day lands the next noon.
+ */
+export function planSlots(
+  nowMs: number,
+  today: string,
+  cfg: NotifyConfig,
+  isBooked: (date: string) => boolean,
+): Slot[] {
+  const slots: Slot[] = [];
+  if (!isBooked(today)) slots.push({ date: today, late: sendInstant(today, cfg) - nowMs < MIN_DELAY_MS });
+  const tomorrow = nextDate(today);
+  if (!isBooked(tomorrow)) slots.push({ date: tomorrow, late: false });
+  return slots;
+}
 
 /**
  * ntfy `delay` — unix seconds as a string — that lands the notification on

@@ -90,6 +90,21 @@ export function weekdayJa(date: string): string {
   return Number.isNaN(d.getTime()) ? "" : WEEKDAYS_JA[d.getUTCDay()];
 }
 
+/** The day after `date` (YYYY-MM-DD). */
+export function nextDate(date: string): string {
+  return new Date(Date.parse(`${date}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The day a draft is for: `?date=` on /api/post-draft. Absent → today. Only
+ * today or tomorrow (JST) are accepted — post-notify books tomorrow's noon
+ * delivery a day ahead, so it asks for tomorrow's draft today. null = invalid.
+ */
+export function targetDate(param: string | null, today: string): string | null {
+  if (param === null || param === "") return today;
+  return param === today || param === nextDate(today) ? param : null;
+}
+
 /** Whole days from `fromDate` to `toDate` (both YYYY-MM-DD), floored at 0. */
 export function daysUntil(fromDate: string, toDate: string): number {
   const from = Date.parse(`${fromDate}T00:00:00Z`);

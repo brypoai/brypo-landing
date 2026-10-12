@@ -1,17 +1,13 @@
 # .github/workflows/post-notify.yml
 #
-# Daily draft notification (docs/post-notify.md). Ticks every 15 minutes;
-# scripts/post-notify.mjs decides whether this tick acts — the send hour, the
-# preparation lead and the default mode live in scripts/post-notify.config.json
-# (send_hour_jst, default 12 = 12:00 JST; lead_hours, default 6; mode), so
-# changing them never touches this file. Once a day is enforced by the run log
-# (/api/post-log).
-#
-# Why 15 minutes and a lead: GitHub runs scheduled workflows late (1.5–5 h on
-# this repo's x-reply history) or drops them (1 of ~7 hourly ticks fired on the
-# first day). The first tick that lands inside the lead window prepares the
-# draft and hands it to ntfy with a `delay`, so the phone gets it exactly at
-# send_hour no matter when the tick ran; a tick after send_hour sends at once.
+# Daily draft notification (docs/post-notify.md). Ticks every 15 minutes.
+# Each tick books, with ntfy's scheduled delivery, whichever of today's and
+# tomorrow's send hour is not booked yet (each with that day's draft), so one
+# tick at any time of day lands the next noon. Why: GitHub runs scheduled
+# workflows hours late (1.5–5 h on this repo's x-reply history) and drops most
+# of them (one tick in ~3.5 h on 2026-10-12). The send hour and default mode
+# live in scripts/post-notify.config.json; bookings are recorded per delivery
+# date in /api/post-log, which is what keeps it to one per day.
 #
 # Sends to the owner's phone via ntfy (secret NTFY_TOPIC, already used by
 # x-reply.yml). Variable POST_NOTIFY_MODE overrides the config: "live" sends,

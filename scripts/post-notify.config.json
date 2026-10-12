@@ -1,9 +1,8 @@
 {
-  "_comment": "毎日の投稿文案通知（docs/post-notify.md）。send_hour_jst = 通知が届く時刻（JST・0〜23時）。lead_hours = その何時間前から文案を用意して ntfy に「send_hour ちょうどに届ける」予約を入れるか（GitHub の定期実行は遅れるため）。mode = \"dry_run\"（作るだけで送らない）/ \"live\"（送る）。GitHub の Variable POST_NOTIFY_MODE があればそちらが優先（off で停止）。宛先・鍵はここに書かない。",
+  "_comment": "毎日の投稿文案通知（docs/post-notify.md）。send_hour_jst = 通知が届く時刻（JST・0〜23時）。起動のたびに、今日と明日の send_hour のうちまだ予約していない分を ntfy に予約する（GitHub の定期実行は遅れるため、前日のうちに翌日分を予約しておく）。mode = \"dry_run\"（作るだけで送らない）/ \"live\"（送る）。GitHub の Variable POST_NOTIFY_MODE があればそちらが優先（off で停止）。宛先・鍵はここに書かない。",
   "mode": "live",
   "send_hour_jst": 12,
   "retry_hours": 3,
-  "lead_hours": 6,
   "base_url": "https://brypo.com",
   "ops_url": "https://brypo.com/ops/"
 }

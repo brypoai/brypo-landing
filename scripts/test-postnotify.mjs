@@ -26,11 +26,11 @@ import {
   MIN_DELAY_MS,
   deliveryDelay,
   isLastChance,
-  isWindowOpen,
   jstHour,
   parseBlockWords,
   parseConfig,
   parseMode,
+  planSlots,
   sendInstant,
 } from "../functions/api/_postnotify.ts";
 import {
@@ -150,8 +150,6 @@ t("config: mode is dry_run unless the file says exactly live", () => {
   eq(parseConfig({}).mode, "dry_run");
 });
 t("config: bad values fall back, good ones apply", () => {
-  eq(parseConfig({ lead_hours: 13 }).lead_hours, 6, "lead over 12 h ignored");
-  eq(parseConfig({ lead_hours: 2 }).lead_hours, 2);
   const c = parseConfig({ send_hour_jst: 24, retry_hours: -1, base_url: "http://x", ops_url: 5 });
   eq(c, DEFAULT_CONFIG);
   eq(parseConfig({ send_hour_jst: 7, base_url: "https://example.com/" }).send_hour_jst, 7);
@@ -178,13 +176,25 @@ t("sendInstant is the send hour of that JST day", () => {
   eq(new Date(sendInstant("2026-10-13", DEFAULT_CONFIG)).toISOString(), "2026-10-13T03:00:00.000Z");
   eq(new Date(sendInstant("2026-10-13", { ...DEFAULT_CONFIG, send_hour_jst: 7 })).toISOString(), "2026-10-12T22:00:00.000Z");
 });
-t("the preparation window opens lead_hours before the send hour", () => {
-  const cfg = DEFAULT_CONFIG; // 12:00, lead 6 → from 06:00
-  eq(DEFAULT_CONFIG.lead_hours, 6);
-  eq(isWindowOpen(jst("2026-10-13", "05:59"), "2026-10-13", cfg), false);
-  eq(isWindowOpen(jst("2026-10-13", "06:00"), "2026-10-13", cfg), true);
-  eq(isWindowOpen(jst("2026-10-13", "23:30"), "2026-10-13", cfg), true, "a late tick still sends");
-  eq(isWindowOpen(jst("2026-10-13", "11:00"), "2026-10-13", { ...cfg, lead_hours: 0 }), false, "lead 0 = send hour only");
+t("planSlots: a tick books today's and tomorrow's noon, whichever is not booked", () => {
+  const cfg = DEFAULT_CONFIG;
+  const none = () => false;
+  eq(planSlots(jst("2026-10-13", "05:30"), "2026-10-13", cfg, none), [
+    { date: "2026-10-13", late: false },
+    { date: "2026-10-14", late: false },
+  ], "early tick, nothing booked → both, scheduled");
+  eq(planSlots(jst("2026-10-13", "05:30"), "2026-10-13", cfg, (d) => d === "2026-10-13"), [
+    { date: "2026-10-14", late: false },
+  ], "today booked (e.g. yesterday) → tomorrow only");
+  eq(planSlots(jst("2026-10-13", "20:00"), "2026-10-13", cfg, () => true), [], "both booked → nothing to do");
+});
+t("planSlots: today's noon already passed and not booked → a late send now", () => {
+  const cfg = DEFAULT_CONFIG;
+  eq(planSlots(jst("2026-10-13", "15:10"), "2026-10-13", cfg, () => false), [
+    { date: "2026-10-13", late: true },
+    { date: "2026-10-14", late: false },
+  ]);
+  eq(planSlots(sendInstant("2026-10-13", cfg) - (MIN_DELAY_MS - 1), "2026-10-13", cfg, () => false)[0].late, true, "too close to schedule");
 });
 t("isLastChance: retry a failed draft until send_hour + retry_hours (capped at 23:00)", () => {
   const cfg = DEFAULT_CONFIG;
@@ -195,6 +205,7 @@ t("deliveryDelay schedules for the send hour, or delivers now", () => {
   const cfg = DEFAULT_CONFIG;
   const at = String(sendInstant("2026-10-13", cfg) / 1000);
   eq(deliveryDelay(jst("2026-10-13", "07:30"), "2026-10-13", cfg), at, "early tick → scheduled for 12:00");
+  eq(deliveryDelay(jst("2026-10-13", "21:00"), "2026-10-14", cfg), String(sendInstant("2026-10-14", cfg) / 1000), "tomorrow's noon, booked the evening before");
   eq(deliveryDelay(jst("2026-10-13", "07:30"), "2026-10-13", cfg, true), null, "forced run → now");
   eq(deliveryDelay(jst("2026-10-13", "12:40"), "2026-10-13", cfg), null, "late tick → now");
   eq(deliveryDelay(sendInstant("2026-10-13", cfg) - (MIN_DELAY_MS - 1), "2026-10-13", cfg), null, "too close to bother");
@@ -402,33 +413,28 @@ t("dry run (no secrets): writes the notification with the X link, sends nothing"
   eq(out.topic, "(NTFY_TOPIC)", "placeholder topic only");
   assert(!("drafts" in out) && !("meta" in out), "only the ntfy payload is written");
 });
-t("before the preparation window (05:30 JST): does nothing", () => {
+t("an early tick (05:30 JST) books today's AND tomorrow's 12:00", () => {
+  for (const d of ["2026-10-12", "2026-10-13"]) rmSync(outFile(d), { force: true });
   const r = run(["--fixture", fixture, "--now", "2026-10-11T20:30:00Z"]);
-  eq(r.status, 0);
-  assert(r.stdout.includes("not yet"), r.stdout);
-  assert(!r.stdout.includes("built"), "nothing built");
-});
-t("inside the window (10:30 JST): prepares now, schedules delivery for 12:00 JST", () => {
-  const d = "2026-10-12";
-  rmSync(outFile(d), { force: true });
-  const r = run(["--fixture", fixture, "--now", "2026-10-12T01:30:00Z"]);
   eq(r.status, 0, r.stdout + r.stderr);
-  assert(r.stdout.includes("delivery scheduled for 12:00 JST"), r.stdout);
-  const out = JSON.parse(readFileSync(outFile(d), "utf8"));
-  eq(out.delay, String(Date.parse("2026-10-12T03:00:00Z") / 1000), "ntfy delay = 12:00 JST");
+  eq(JSON.parse(readFileSync(outFile("2026-10-12"), "utf8")).delay, String(Date.parse("2026-10-12T03:00:00Z") / 1000), "today 12:00 JST");
+  eq(JSON.parse(readFileSync(outFile("2026-10-13"), "utf8")).delay, String(Date.parse("2026-10-13T03:00:00Z") / 1000), "tomorrow 12:00 JST");
 });
-t("a late tick (12:30 JST) delivers at once", () => {
-  const d = "2026-10-12";
-  rmSync(outFile(d), { force: true });
+t("a late tick (12:30 JST) sends today's at once and books tomorrow's", () => {
+  for (const d of ["2026-10-12", "2026-10-13"]) rmSync(outFile(d), { force: true });
   const r = run(["--fixture", fixture, "--now", "2026-10-12T03:30:00Z"]);
   eq(r.status, 0, r.stdout + r.stderr);
-  assert(r.stdout.includes("delivery: now"), r.stdout);
-  assert(!("delay" in JSON.parse(readFileSync(outFile(d), "utf8"))), "no delay field");
+  assert(r.stdout.includes("2026-10-12: delivery: now"), r.stdout);
+  assert(r.stdout.includes("2026-10-13: delivery scheduled for 12:00 JST"), r.stdout);
+  assert(!("delay" in JSON.parse(readFileSync(outFile("2026-10-12"), "utf8"))), "today: no delay");
+  eq(JSON.parse(readFileSync(outFile("2026-10-13"), "utf8")).delay, String(Date.parse("2026-10-13T03:00:00Z") / 1000));
 });
-t("a forced run (workflow_dispatch) delivers at once even in the morning", () => {
+t("a forced run (workflow_dispatch) delivers today's at once and books nothing else", () => {
+  for (const d of ["2026-10-12", "2026-10-13"]) rmSync(outFile(d), { force: true });
   const r = run(["--fixture", fixture, "--force", "--now", "2026-10-12T00:30:00Z"]);
   eq(r.status, 0, r.stdout + r.stderr);
-  assert(r.stdout.includes("delivery: now"), r.stdout);
+  assert(r.stdout.includes("2026-10-12: delivery: now"), r.stdout);
+  assert(!existsSync(outFile("2026-10-13")), "tomorrow untouched");
 });
 t("stop switch POST_NOTIFY_MODE=off: stops before anything else", () => {
   const r = run(["--fixture", fixture, "--force"], { POST_NOTIFY_MODE: "off" });

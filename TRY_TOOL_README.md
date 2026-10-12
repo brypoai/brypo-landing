@@ -264,6 +264,12 @@ publish and metrics; no new secret) returns `{ date, text, angle, cached }`.
   whether a link is due: `brypo.com/try` at most once per 3 days
   (`postdraft:lastlink`). Feelings and opinions are allowed; events the facts
   don't contain are not (same line as brypo Studio's ANTI_FABRICATION).
+- **Links are off since 2026-10-12** (`LINKS_ENABLED = false` in
+  `_postdraft.ts`): `/try` says 「これは無料版の一部です。製品版のBrypoは…」,
+  which points at a paid edition. The model is told to name no domain, and
+  `unlink()` takes out any link it adds anyway (a link-only line goes; an
+  inline mention becomes "Brypo") — also from drafts cached before the switch.
+  Set it back to `true` to return to the once-per-3-days rule.
 - **Spend**: uses `ANTHROPIC_API_KEY_TRY` — the same key and the same $50/mo
   Console limit as `/try` — and books the cost into the same
   `usage:YYYY-MM-DD` counter, gated by `DAILY_BUDGET_USD` **before** calling.
@@ -302,13 +308,20 @@ owner posts by hand). **Full spec, judgment lines and owner steps:
   goes out at once; a forced run always delivers today's at once. The send hour
   (`send_hour_jst`, default 12 JST) and default mode (`mode`, default
   `dry_run`) are in `scripts/post-notify.config.json`.
+- The same way, it books the Sunday reminder to record the week on `/ops`
+  (`remind_hour_jst`, default 20 JST) — from Thursday evening, since ntfy
+  holds a scheduled message for at most 3 days; not booked by Sunday's hour →
+  sent at once that evening. Recorded per Sunday, apart from the drafts (never
+  counted in the post rate). A server without reminder records (a tick
+  between merge and deploy) makes the script wait rather than send twice.
 - Variable `POST_NOTIFY_MODE` overrides the config (`live` / `dry_run`;
   `off` = kill switch). Secrets: the existing `PUBLISH_TOKEN` and
   `NTFY_TOPIC` (both already used by x-reply.yml); optional
   `POST_NOTIFY_BLOCK_WORDS`. **No new Cloudflare env, no new secret.**
 - `/api/post-log` (owner-gated, `PUBLISH_TOKEN`): `GET` → `{ today, log,
-  judgment }`; `POST {kind:"send",date,drafts,mode}` (machine) /
-  `{kind:"weekly",week,posts,mood}` (owner, from `/ops`). One KV document
+  judgment }`; `POST {kind:"send",date,drafts,mode}` /
+  `{kind:"remind",week,mode}` (machine) / `{kind:"weekly",week,posts,mood}`
+  (owner, from `/ops`). One KV document
   `postlog:v1`, no TTL. Pure helpers: `_postlog.ts` (judgment),
   `_postnotify.ts` (schedule / guard / notification), `_xtext.ts`
   (twitter-text weighted length, 280 fit, intent URL). `/api/post-draft` now

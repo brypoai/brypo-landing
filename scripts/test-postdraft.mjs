@@ -18,6 +18,7 @@ import {
   DRAFT_PROMPT_VERSION,
   DRAFT_TTL_S,
   LAST_LINK_KEY,
+  LINKS_ENABLED,
   LINK_GAP_DAYS,
   POST_CHAR_LIMIT,
   POST_DRAFT_MODEL,
@@ -37,6 +38,7 @@ import {
   statsDelta,
   targetDate,
   toPostDraft,
+  unlink,
   weekdayJa,
 } from "../functions/api/_postdraft.ts";
 import { jstDateKey, parseJsonObject } from "../functions/api/_lib.ts";
@@ -143,13 +145,27 @@ t("statsDelta says nothing rather than tell a false story", () => {
   eq(statsDelta(prev, 5, 3, "2026-10-12"), null, "counter reset (would read as -7 people)");
   eq(statsDelta(prev, 12, 1, "2026-10-12"), null, "repeat counter reset");
 });
-t("the link is allowed at most once per LINK_GAP_DAYS", () => {
+t("the link is allowed at most once per LINK_GAP_DAYS (when links are on)", () => {
   eq(LINK_GAP_DAYS, 3);
-  eq(linkAllowed(null, "2026-10-12"), true, "never linked");
-  eq(linkAllowed("garbage", "2026-10-12"), true, "corrupt value never blocks forever");
-  eq(linkAllowed("2026-10-12", "2026-10-12"), false, "same day");
-  eq(linkAllowed("2026-10-10", "2026-10-12"), false, "two days later");
-  eq(linkAllowed("2026-10-09", "2026-10-12"), true, "three days later");
+  eq(linkAllowed(null, "2026-10-12", true), true, "never linked");
+  eq(linkAllowed("garbage", "2026-10-12", true), true, "corrupt value never blocks forever");
+  eq(linkAllowed("2026-10-12", "2026-10-12", true), false, "same day");
+  eq(linkAllowed("2026-10-10", "2026-10-12", true), false, "two days later");
+  eq(linkAllowed("2026-10-09", "2026-10-12", true), true, "three days later");
+});
+t("links are off (2026-10-12: /try points at a paid edition) — never allowed", () => {
+  eq(LINKS_ENABLED, false);
+  eq(linkAllowed(null, "2026-10-12"), false, "default follows LINKS_ENABLED");
+  eq(linkAllowed("2026-10-01", "2026-10-12"), false, "however long since the last link");
+});
+t("unlink takes the product link out and leaves the words", () => {
+  const sample = "触ってくれた人はまだ一人だけど、モチベ保たせてくれる唯一の人や。";
+  eq(unlink(`${sample}\nbrypo.com/try`), sample, "link line (the owner's own shape)");
+  eq(unlink(`${sample}\nhttps://brypo.com/try`), sample, "with scheme");
+  eq(unlink("brypo.com/tryを触ってくれた人がいる。うれしい"), "Brypoを触ってくれた人がいる。うれしい", "inline: no spaces in Japanese, the sentence survives");
+  eq(unlink("よかったら https://www.brypo.com/try?ref=x で。"), "よかったら Brypo で。", "query string too");
+  eq(unlink("リンクなしの日や。"), "リンクなしの日や。", "nothing to remove");
+  assert(!mentionsLink(unlink(`${sample}\nbrypo.com/try`)), "no link left to record");
 });
 t("mentionsLink spots the product link in a draft", () => {
   assert(mentionsLink("よかったら brypo.com/try で触ってみてほしい"));
@@ -323,6 +339,13 @@ t("states the change since the last draft — growth, or plainly none", () => {
 t("tells the model whether a link is allowed today", () => {
   assert(buildDraftUserMessage(base).includes("Link today: no"), "not today");
   assert(buildDraftUserMessage({ ...base, linkOk: true }).includes("Link today: OK"), "allowed");
+});
+t("links off: the message forbids links and names no domain", () => {
+  const msg = buildDraftUserMessage({ ...base, linksOff: true });
+  assert(msg.includes("Links: off"), "says so");
+  const facts = msg.split("\n").filter((l) => !l.startsWith("- Links: off"));
+  assert(!facts.some((l) => /brypo\.com/i.test(l)), "no fact names the domain for the model to echo");
+  assert(msg.includes("tried the tool so far: 13"), "the count is still there");
 });
 t("first run says so instead of listing an empty section", () => {
   const msg = buildDraftUserMessage({ ...base, delta: null, recentAngles: [] });

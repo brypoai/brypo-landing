@@ -22,6 +22,7 @@ import {
   DRAFT_TIMEOUT_MS,
   DRAFT_TTL_S,
   LAST_LINK_KEY,
+  LINKS_ENABLED,
   POST_DRAFT_MODEL,
   RECENT_KEY,
   SNAPSHOT_KEY,
@@ -36,6 +37,7 @@ import {
   statsDelta,
   targetDate,
   toPostDraft,
+  unlink,
 } from "./_postdraft";
 import type { PostDraft } from "./_postdraft";
 import { fitToWeighted, weightedLength, xIntentUrl } from "./_xtext";
@@ -170,12 +172,14 @@ async function handleGet(context: PagesContext): Promise<Response> {
     return unavailable(date, "TRY_KV is not bound — drafts are cached in KV.");
   }
 
-  // 1. Today's draft already generated? Serve it and spend nothing.
+  // 1. Today's draft already generated? Serve it and spend nothing. With
+  //    links off, a draft cached before the switch is served without its link.
   const cachedRaw = await kv.get(draftKey(date));
   const cached = toPostDraft(parseJsonObject(cachedRaw ?? ""));
-  if (cached !== null) {
+  const cachedText = cached === null ? "" : LINKS_ENABLED ? cached.text : unlink(cached.text);
+  if (cached !== null && cachedText !== "") {
     return json(
-      { date, text: cached.text, angle: cached.angle, cached: true, model: null, ...xFields(cached.text) },
+      { date, text: cachedText, angle: cached.angle, cached: true, model: null, ...xFields(cachedText) },
       200,
     );
   }
@@ -219,6 +223,7 @@ async function handleGet(context: PagesContext): Promise<Response> {
       repeatTryUsers,
       delta: statsDelta(parseSnapshot(snapshotRaw), uniqueTryUsers, repeatTryUsers, date),
       linkOk: linkAllowed(lastLinkRaw, date),
+      linksOff: !LINKS_ENABLED,
       recentAngles,
     }),
   );
@@ -231,7 +236,11 @@ async function handleGet(context: PagesContext): Promise<Response> {
   //    carries one, and book the spend against the shared counter. A rare
   //    concurrent first-load-of-the-day can draft twice; the second write
   //    simply wins.
-  const { draft } = result;
+  // Links off: the prompt says so; take out any link the model added anyway.
+  const draft = LINKS_ENABLED ? result.draft : { ...result.draft, text: unlink(result.draft.text) };
+  if (draft.text === "") {
+    return json({ error: "The draft was only a link.", code: "draft_failed" }, 502);
+  }
   await Promise.all([
     kv.put(SNAPSHOT_KEY, JSON.stringify({ date, unique: uniqueTryUsers, repeat: repeatTryUsers }), {
       expirationTtl: DRAFT_TTL_S,

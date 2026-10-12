@@ -21,7 +21,9 @@ import { fileURLToPath } from "node:url";
 import { X_INTENT_BASE, fitToWeighted, weightedLength, xIntentUrl } from "../functions/api/_xtext.ts";
 import {
   DEFAULT_CONFIG,
+  MAX_DELAY_MS,
   buildNotice,
+  buildReminder,
   guardHits,
   MIN_DELAY_MS,
   deliveryDelay,
@@ -30,8 +32,10 @@ import {
   parseBlockWords,
   parseConfig,
   parseMode,
+  planReminder,
   planSlots,
   readDraftResponse,
+  remindDelay,
   sendInstant,
 } from "../functions/api/_postnotify.ts";
 import {
@@ -43,6 +47,7 @@ import {
   judge,
   parseLog,
   parseLogInput,
+  reminded,
   weekSunday,
   windowStart,
 } from "../functions/api/_postlog.ts";
@@ -212,6 +217,32 @@ t("deliveryDelay schedules for the send hour, or delivers now", () => {
   eq(deliveryDelay(sendInstant("2026-10-13", cfg) - (MIN_DELAY_MS - 1), "2026-10-13", cfg), null, "too close to bother");
   eq(deliveryDelay(sendInstant("2026-10-13", cfg) - MIN_DELAY_MS, "2026-10-13", cfg), at, "just far enough");
 });
+t("config: the Sunday reminder defaults to 20:00 JST; bad values fall back", () => {
+  eq(DEFAULT_CONFIG.remind_hour_jst, 20);
+  eq(parseConfig({ remind_hour_jst: 21 }).remind_hour_jst, 21);
+  eq(parseConfig({ remind_hour_jst: 24 }).remind_hour_jst, 20);
+  eq(parseConfig({ remind_hour_jst: "20" }).remind_hour_jst, 20);
+});
+t("planReminder: books Sunday 20:00 once it is within ntfy's 3-day limit", () => {
+  const cfg = DEFAULT_CONFIG;
+  const none = () => false;
+  // Sunday 2026-10-18 20:00 JST; 3 days minus an hour before it = Thursday 21:00.
+  eq(planReminder(jst("2026-10-12", "09:00"), "2026-10-12", cfg, none), null, "Monday: too far ahead for ntfy");
+  eq(planReminder(jst("2026-10-15", "20:30"), "2026-10-15", cfg, none), null, "Thursday 20:30: still too far");
+  eq(planReminder(jst("2026-10-15", "21:30"), "2026-10-15", cfg, none), { week: "2026-10-18", late: false }, "Thursday 21:30");
+  eq(planReminder(jst("2026-10-18", "13:00"), "2026-10-18", cfg, none), { week: "2026-10-18", late: false }, "Sunday afternoon");
+  eq(planReminder(jst("2026-10-18", "20:30"), "2026-10-18", cfg, none), { week: "2026-10-18", late: true }, "missed: send now");
+  eq(planReminder(jst("2026-10-17", "10:00"), "2026-10-17", cfg, (w) => w === "2026-10-18"), null, "already booked");
+  eq(planReminder(jst("2026-10-19", "08:00"), "2026-10-19", cfg, none), null, "Monday after: next Sunday is too far");
+});
+t("remindDelay: unix seconds of Sunday 20:00 JST, or now once it has passed", () => {
+  const cfg = DEFAULT_CONFIG;
+  eq(remindDelay(jst("2026-10-17", "10:00"), "2026-10-18", cfg), String(Date.parse("2026-10-18T11:00:00Z") / 1000));
+  eq(remindDelay(jst("2026-10-18", "20:30"), "2026-10-18", cfg), null);
+  assert(MAX_DELAY_MS < 3 * 86_400_000, "inside ntfy.sh's 3-day limit");
+  // The farthest daily booking (a tick at 00:00 for tomorrow's noon, 36 h) is inside it too.
+  assert(sendInstant("2026-10-14", cfg) - jst("2026-10-13", "00:00") < MAX_DELAY_MS, "daily bookings fit");
+});
 
 // ---- _postnotify: guard -------------------------------------------------------
 
@@ -277,6 +308,15 @@ t("notice: Sunday adds the weekly-record button, weekdays do not", () => {
   assert(sun.actions.length <= 3, "still ≤ 3 actions");
   assert(!mon.actions.some((a) => a.url.endsWith("#weekly")), "monday");
 });
+t("reminder: taps to the weekly record on /ops, no X link, not a draft", () => {
+  const r = buildReminder("2026-10-18", DEFAULT_CONFIG);
+  eq(r.title, "今週の記録（10/12〜10/18）");
+  eq(r.click, "https://brypo.com/ops/#weekly");
+  eq(r.actions, [{ action: "view", label: "記録する（1分）", url: "https://brypo.com/ops/#weekly", clear: true }]);
+  assert(!JSON.stringify(r).includes("x.com/intent"), "no X link");
+  assert(!("drafts" in r), "never counted as a delivered draft");
+  assert(r.message.includes("投稿0本"), "states the counting rule");
+});
 t("post-draft answer: the asked day's draft is used; another day's never is", () => {
   const ok = { date: "2026-10-13", text: DRAFT.text, angle: DRAFT.angle, cached: false };
   eq(readDraftResponse("2026-10-13", 200, ok), { draft: { text: DRAFT.text, angle: DRAFT.angle } });
@@ -331,6 +371,21 @@ t("a live send sets first_live; a later dry run never overwrites it", () => {
   log = applyLogInput(log, { kind: "send", date: "2026-10-12", drafts: 0, mode: "dry_run" }, NOW);
   eq(log.sends["2026-10-12"].mode, "live");
   assert(alreadyRan(log, "2026-10-12", "dry_run"), "live covers dry_run");
+});
+t("reminders: one per Sunday, recorded apart from drafts", () => {
+  eq(parseLogInput({ kind: "remind", week: "2026-10-18", mode: "live" }), { kind: "remind", week: "2026-10-18", mode: "live" });
+  assert(typeof parseLogInput({ kind: "remind", week: "2026-10-17", mode: "live" }) === "string", "not a Sunday");
+  assert(typeof parseLogInput({ kind: "remind", week: "2026-10-18", mode: "auto" }) === "string", "mode");
+  let log = applyLogInput(emptyLog(), { kind: "remind", week: "2026-10-18", mode: "dry_run" }, NOW);
+  assert(reminded(log, "2026-10-18", "dry_run") && !reminded(log, "2026-10-18", "live"), "a dry run does not cover live");
+  log = applyLogInput(log, { kind: "remind", week: "2026-10-18", mode: "live" }, NOW);
+  log = applyLogInput(log, { kind: "remind", week: "2026-10-18", mode: "dry_run" }, NOW);
+  eq(log.reminds["2026-10-18"].mode, "live", "a dry run never overwrites a live booking");
+  assert(reminded(log, "2026-10-18", "dry_run"), "live covers dry_run");
+  eq(log.sends, {}, "not a draft");
+  eq(log.first_live, null, "does not start the judgment window");
+  const back = parseLog(JSON.stringify({ ...log, reminds: { ...log.reminds, "2026-10-17": { mode: "live" }, "2026-10-25": { mode: "x" } } }));
+  eq(Object.keys(back.reminds), ["2026-10-18"], "survives a round trip; bad rows dropped");
 });
 t("week helpers: Mon–Sun weeks keyed by Sunday", () => {
   eq(weekSunday("2026-10-12"), "2026-10-18"); // Mon
@@ -409,6 +464,7 @@ const tmp = mkdtempSync(join(tmpdir(), "postnotify-"));
 const fixture = join(tmp, "draft.json");
 writeFileSync(fixture, JSON.stringify(DRAFT));
 const outFile = (d) => join(root, "out", "post-notify", `${d}.json`);
+const remindFile = (w) => join(root, "out", "post-notify", `remind-${w}.json`);
 
 function run(args, env = {}) {
   return spawnSync(process.execPath, [join(here, "post-notify.mjs"), ...args], {
@@ -453,6 +509,32 @@ t("a forced run (workflow_dispatch) delivers today's at once and books nothing e
   eq(r.status, 0, r.stdout + r.stderr);
   assert(r.stdout.includes("2026-10-12: delivery: now"), r.stdout);
   assert(!existsSync(outFile("2026-10-13")), "tomorrow untouched");
+});
+t("a Saturday tick also books the Sunday 20:00 reminder", () => {
+  const w = "2026-10-18";
+  rmSync(remindFile(w), { force: true });
+  const r = run(["--fixture", fixture, "--now", "2026-10-17T01:00:00Z"]); // Sat 10:00 JST
+  eq(r.status, 0, r.stdout + r.stderr);
+  assert(r.stdout.includes(`${w} reminder: scheduled for 20:00 JST`), r.stdout);
+  const out = JSON.parse(readFileSync(remindFile(w), "utf8"));
+  eq(out.delay, String(Date.parse("2026-10-18T11:00:00Z") / 1000), "Sunday 20:00 JST");
+  eq(out.click, "https://brypo.com/ops/#weekly");
+  eq(out.topic, "(NTFY_TOPIC)", "placeholder topic only");
+});
+t("Sunday after 20:00 with no booking: the reminder goes out at once", () => {
+  const w = "2026-10-18";
+  rmSync(remindFile(w), { force: true });
+  const r = run(["--fixture", fixture, "--now", "2026-10-18T11:30:00Z"]); // Sun 20:30 JST
+  eq(r.status, 0, r.stdout + r.stderr);
+  assert(r.stdout.includes(`${w} reminder: now`), r.stdout);
+  assert(!("delay" in JSON.parse(readFileSync(remindFile(w), "utf8"))), "no delay");
+});
+t("early in the week no reminder is booked (ntfy holds at most 3 days)", () => {
+  rmSync(remindFile("2026-10-18"), { force: true });
+  const r = run(["--fixture", fixture, "--now", "2026-10-12T03:30:00Z"]); // Mon 12:30 JST
+  eq(r.status, 0, r.stdout + r.stderr);
+  assert(!r.stdout.includes("reminder"), r.stdout);
+  assert(!existsSync(remindFile("2026-10-18")), "nothing written");
 });
 t("stop switch POST_NOTIFY_MODE=off: stops before anything else", () => {
   const r = run(["--fixture", fixture, "--force"], { POST_NOTIFY_MODE: "off" });

@@ -7,7 +7,8 @@
 //
 // What this file decides:
 //   - schedule: which of today's / tomorrow's send hours this tick books
-//               (send hour from the config file)
+//               (send hour from the config file), and when to book the
+//               Sunday-evening reminder to record the week on /ops
 //   - guard:    does the draft contain something that must never be posted
 //               (prices / paid-plan talk / affiliate links / contact details,
 //               plus owner-supplied words such as an employer name)? A hit
@@ -18,6 +19,7 @@
 // text filled in; the owner reads it and taps "post" themselves.
 
 import { X_MAX_WEIGHTED, fitToWeighted, weightedLength, xIntentUrl } from "./_xtext.ts";
+import { addDays, weekSunday } from "./_postlog.ts";
 
 // ---- config -----------------------------------------------------------------
 
@@ -32,6 +34,8 @@ export interface NotifyConfig {
   ops_url: string;
   /** Default mode when Variable POST_NOTIFY_MODE is unset: "dry_run" | "live". */
   mode: "dry_run" | "live";
+  /** Hour (JST, 0–23) on Sundays of the reminder to record the week on /ops. */
+  remind_hour_jst: number;
 }
 
 export const DEFAULT_CONFIG: NotifyConfig = {
@@ -40,6 +44,7 @@ export const DEFAULT_CONFIG: NotifyConfig = {
   base_url: "https://brypo.com",
   ops_url: "https://brypo.com/ops/",
   mode: "dry_run",
+  remind_hour_jst: 20,
 };
 
 /** Merge a parsed config file over the defaults, ignoring bad values. */
@@ -55,6 +60,9 @@ export function parseConfig(obj: any): NotifyConfig {
   if (typeof obj.base_url === "string" && obj.base_url.startsWith("https://")) c.base_url = obj.base_url.replace(/\/+$/, "");
   if (typeof obj.ops_url === "string" && obj.ops_url.startsWith("https://")) c.ops_url = obj.ops_url;
   if (obj.mode === "live") c.mode = "live";
+  if (Number.isInteger(obj.remind_hour_jst) && obj.remind_hour_jst >= 0 && obj.remind_hour_jst <= 23) {
+    c.remind_hour_jst = obj.remind_hour_jst;
+  }
   return c;
 }
 
@@ -135,9 +143,53 @@ export function planSlots(
  * late run), it is less than MIN_DELAY_MS off, or the run was forced by hand.
  */
 export function deliveryDelay(nowMs: number, date: string, cfg: NotifyConfig, force = false): string | null {
-  if (force) return null;
-  const at = sendInstant(date, cfg);
-  return at - nowMs >= MIN_DELAY_MS ? String(Math.floor(at / 1000)) : null;
+  return force ? null : delayUntil(sendInstant(date, cfg), nowMs);
+}
+
+function delayUntil(atMs: number, nowMs: number): string | null {
+  return atMs - nowMs >= MIN_DELAY_MS ? String(Math.floor(atMs / 1000)) : null;
+}
+
+/** ntfy.sh holds a scheduled message for at most 3 days; stay an hour inside. */
+export const MAX_DELAY_MS = 3 * 86_400_000 - 3_600_000;
+
+/** Epoch ms of the reminder for `week` (its Sunday, JST). */
+export function remindInstant(week: string, cfg: NotifyConfig): number {
+  return jstInstant(week, cfg.remind_hour_jst);
+}
+
+/** The Sunday reminder a tick should take care of. */
+export interface ReminderSlot {
+  /** The Sunday (JST) closing the week to record — also its record key. */
+  week: string;
+  /** The reminder hour has passed (Sunday evening, not booked yet): send now. */
+  late: boolean;
+}
+
+/**
+ * The weekly "record your week on /ops" reminder, Sunday at remind_hour_jst.
+ * Booked like the drafts, with ntfy's scheduled delivery, by the first tick
+ * once the hour is within ntfy's 3-day limit (from Thursday evening) — so
+ * GitHub's sparse cron only has to fire once in those days. Not booked by
+ * Sunday's hour → send now (until midnight; the week can still be recorded
+ * later on /ops).
+ */
+export function planReminder(
+  nowMs: number,
+  today: string,
+  cfg: NotifyConfig,
+  isReminded: (week: string) => boolean,
+): ReminderSlot | null {
+  const week = weekSunday(today);
+  if (isReminded(week)) return null;
+  const at = remindInstant(week, cfg);
+  if (at - nowMs > MAX_DELAY_MS) return null; // too far ahead for ntfy to hold
+  return { week, late: at - nowMs < MIN_DELAY_MS };
+}
+
+/** ntfy `delay` for the reminder, or null to send now (see deliveryDelay). */
+export function remindDelay(nowMs: number, week: string, cfg: NotifyConfig): string | null {
+  return delayUntil(remindInstant(week, cfg), nowMs);
 }
 
 // ---- guard ------------------------------------------------------------------
@@ -275,4 +327,17 @@ export function buildNotice(input: NoticeInput): Notice {
   actions.push({ action: "view", label: "一覧", url: cfg.ops_url });
 
   return { title, message, click, actions: actions.slice(0, 3), tags: ["memo"], drafts, meta };
+}
+
+/** The Sunday-evening reminder: record this week's posts and mood on /ops.
+ *  No draft and no X link — it is not counted as a delivered draft. */
+export function buildReminder(week: string, cfg: NotifyConfig): Omit<Notice, "drafts" | "meta"> {
+  const url = `${cfg.ops_url}#weekly`;
+  return {
+    title: `今週の記録（${dayLabel(addDays(week, -6)).md}〜${dayLabel(week).md}）`,
+    message: "今週の投稿数と気持ち（5段階）の記録をお願いします（1分）。\n記録が無い週は投稿0本として数えます。",
+    click: url,
+    actions: [{ action: "view", label: "記録する（1分）", url, clear: true }],
+    tags: ["pencil2"],
+  };
 }

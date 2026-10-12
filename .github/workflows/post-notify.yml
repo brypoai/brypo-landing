@@ -7,7 +7,9 @@
 # workflows hours late (1.5–5 h on this repo's x-reply history) and drops most
 # of them (one tick in ~3.5 h on 2026-10-12). The send hour and default mode
 # live in scripts/post-notify.config.json; bookings are recorded per delivery
-# date in /api/post-log, which is what keeps it to one per day.
+# date in /api/post-log, which is what keeps it to one per day. The Sunday
+# 20:00 reminder to record the week on /ops is booked the same way (from
+# Thursday evening: ntfy holds a scheduled message for at most 3 days).
 #
 # Sends to the owner's phone via ntfy (secret NTFY_TOPIC, already used by
 # x-reply.yml). Variable POST_NOTIFY_MODE overrides the config: "live" sends,

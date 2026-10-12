@@ -7,6 +7,7 @@
 //                                       (to skip a day that already ran)
 //   POST  { kind: "send", date, drafts, mode }   machine row (post-notify.mjs)
 //   POST  { kind: "weekly", week, posts, mood }  owner row (/ops, Sundays)
+//   POST  { kind: "remind", week, mode }          Sunday reminder booked (post-notify.mjs)
 //
 // One small JSON document in TRY_KV (key postlog:v1, no TTL). Read-modify-
 // write is fine here: the writers are one hourly workflow (concurrency 1)

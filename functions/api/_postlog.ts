@@ -1,12 +1,14 @@
 // functions/api/_postlog.ts
 //
 // Pure helpers for /api/post-log — the record behind the daily draft notification
-// (docs/post-notify.md). Two kinds of rows live in ONE small KV document:
+// (docs/post-notify.md). Three kinds of rows live in ONE small KV document:
 //
-//   sends[date]  written by the machine (scripts/post-notify.mjs) after each
-//                daily run: how many drafts went out, and in which mode.
-//   weeks[sun]   written by the owner on /ops once a week (Sunday): posts
-//                made that week and a 1–5 mood score. Under a minute.
+//   sends[date]    written by the machine (scripts/post-notify.mjs) after each
+//                  daily run: how many drafts went out, and in which mode.
+//   weeks[sun]     written by the owner on /ops once a week (Sunday): posts
+//                  made that week and a 1–5 mood score. Under a minute.
+//   reminds[sun]   written by the machine when it books the Sunday-evening
+//                  "record your week" notification (one per week).
 //
 // judge() applies the pre-agreed lines (docs/post-notify.md §判定の線) to that
 // document. It is a rule lookup, not an opinion: the window is fixed from the
@@ -31,12 +33,19 @@ export interface WeekRow {
   at: string;
 }
 
+export interface RemindRow {
+  mode: SendMode;
+  at: string;
+}
+
 export interface PostLog {
   /** JST date (YYYY-MM-DD) of the first live notification — starts the window. */
   first_live: string | null;
   sends: Record<string, SendRow>;
   /** Keyed by the Sunday (JST) that closes the Mon–Sun week. */
   weeks: Record<string, WeekRow>;
+  /** Sunday reminders booked, keyed like weeks. Not drafts: never counted. */
+  reminds: Record<string, RemindRow>;
 }
 
 export const WINDOW_WEEKS = 6;
@@ -53,7 +62,7 @@ export const LINES = {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function emptyLog(): PostLog {
-  return { first_live: null, sends: {}, weeks: {} };
+  return { first_live: null, sends: {}, weeks: {}, reminds: {} };
 }
 
 /** Parse the stored document, dropping anything malformed. */
@@ -76,6 +85,10 @@ export function parseLog(raw: string | null): PostLog {
     const w = toWeekRow(d, r);
     if (w) log.weeks[d] = w;
   }
+  for (const [d, r] of Object.entries(obj.reminds ?? {})) {
+    const m = toRemindRow(d, r);
+    if (m) log.reminds[d] = m;
+  }
   return log;
 }
 
@@ -91,6 +104,12 @@ function toWeekRow(sunday: string, r: any): WeekRow | null {
   if (!Number.isInteger(r.posts) || r.posts < 0 || r.posts > 200) return null;
   if (!Number.isInteger(r.mood) || r.mood < 1 || r.mood > 5) return null;
   return { posts: r.posts, mood: r.mood, at: typeof r.at === "string" ? r.at : "" };
+}
+
+function toRemindRow(sunday: string, r: any): RemindRow | null {
+  if (!isSunday(sunday) || r === null || typeof r !== "object") return null;
+  if (r.mode !== "live" && r.mode !== "dry_run") return null;
+  return { mode: r.mode, at: typeof r.at === "string" ? r.at : "" };
 }
 
 // ---- dates (all YYYY-MM-DD, calendar arithmetic in UTC) ---------------------
@@ -125,7 +144,8 @@ export function defaultRecordWeek(today: string): string {
 
 export type LogInput =
   | { kind: "send"; date: string; drafts: number; mode: SendMode }
-  | { kind: "weekly"; week: string; posts: number; mood: number };
+  | { kind: "weekly"; week: string; posts: number; mood: number }
+  | { kind: "remind"; week: string; mode: SendMode };
 
 /** Validate a POST body. Returns the typed input, or an error string. */
 export function parseLogInput(body: any): LogInput | string {
@@ -142,12 +162,22 @@ export function parseLogInput(body: any): LogInput | string {
     if (!Number.isInteger(body.mood) || body.mood < 1 || body.mood > 5) return "mood must be an integer 1–5";
     return { kind: "weekly", week: body.week, posts: body.posts, mood: body.mood };
   }
-  return 'kind must be "send" or "weekly"';
+  if (body.kind === "remind") {
+    if (!isSunday(body.week ?? "")) return "week must be a Sunday (YYYY-MM-DD)";
+    if (body.mode !== "live" && body.mode !== "dry_run") return 'mode must be "live" or "dry_run"';
+    return { kind: "remind", week: body.week, mode: body.mode };
+  }
+  return 'kind must be "send", "weekly" or "remind"';
 }
 
 /** Apply one validated write. Returns a new document (input untouched). */
 export function applyLogInput(log: PostLog, input: LogInput, nowIso: string): PostLog {
-  const next: PostLog = { first_live: log.first_live, sends: { ...log.sends }, weeks: { ...log.weeks } };
+  const next: PostLog = {
+    first_live: log.first_live,
+    sends: { ...log.sends },
+    weeks: { ...log.weeks },
+    reminds: { ...log.reminds },
+  };
   if (input.kind === "send") {
     const prev = next.sends[input.date];
     // A dry run never overwrites a live row of the same day.
@@ -156,6 +186,11 @@ export function applyLogInput(log: PostLog, input: LogInput, nowIso: string): Po
     }
     if (input.mode === "live" && (next.first_live === null || input.date < next.first_live)) {
       next.first_live = input.date;
+    }
+  } else if (input.kind === "remind") {
+    // As with sends: a dry run never overwrites a live booking.
+    if (next.reminds[input.week]?.mode !== "live") {
+      next.reminds[input.week] = { mode: input.mode, at: nowIso };
     }
   } else {
     next.weeks[input.week] = { posts: input.posts, mood: input.mood, at: nowIso };
@@ -166,6 +201,13 @@ export function applyLogInput(log: PostLog, input: LogInput, nowIso: string): Po
 /** Has today's run already happened for `mode`? (live also covers dry_run.) */
 export function alreadyRan(log: PostLog, date: string, mode: SendMode): boolean {
   const row = log.sends[date];
+  if (!row) return false;
+  return row.mode === "live" || row.mode === mode;
+}
+
+/** Is the Sunday reminder for `week` already booked for `mode`? (live covers dry_run.) */
+export function reminded(log: PostLog, week: string, mode: SendMode): boolean {
+  const row = log.reminds[week];
   if (!row) return false;
   return row.mode === "live" || row.mode === mode;
 }

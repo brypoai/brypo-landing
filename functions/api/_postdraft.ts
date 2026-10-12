@@ -61,6 +61,14 @@ export const DRAFT_PROMPT_VERSION = 3;
 /** A post may carry the brypo.com/try link at most once per this many days. */
 export const LINK_GAP_DAYS = 3;
 
+/**
+ * May drafts carry the brypo.com/try link at all? Off since 2026-10-12: the
+ * /try page says 「これは無料版の一部です。製品版のBrypoは…」, which points at a
+ * paid edition, and posts must not lead to paid-version talk
+ * (docs/post-notify.md §文面). true = back to once per LINK_GAP_DAYS.
+ */
+export const LINKS_ENABLED = false;
+
 // ---- KV keys ---------------------------------------------------------------
 
 /** postdraft:v<N>:YYYY-MM-DD — one cached draft per JST day and prompt version. */
@@ -177,8 +185,9 @@ export function statsDelta(
   return { since: prev.date, newUsers: unique - prev.unique, newRepeat: repeat - prev.repeat };
 }
 
-/** May today's post carry the brypo.com/try link? (once per LINK_GAP_DAYS) */
-export function linkAllowed(lastLinkDate: string | null, today: string): boolean {
+/** May today's post carry the brypo.com/try link? (once per LINK_GAP_DAYS, never while links are off) */
+export function linkAllowed(lastLinkDate: string | null, today: string, enabled = LINKS_ENABLED): boolean {
+  if (!enabled) return false;
   if (lastLinkDate === null || !DATE_RE.test(lastLinkDate)) return true;
   return daysUntil(lastLinkDate, today) >= LINK_GAP_DAYS;
 }
@@ -186,6 +195,22 @@ export function linkAllowed(lastLinkDate: string | null, today: string): boolean
 /** Does a draft carry the product link? Recorded so the next days skip it. */
 export function mentionsLink(text: string): boolean {
   return /brypo\.com/i.test(text);
+}
+
+// brypo.com with an optional ASCII path. Japanese runs on without spaces, so
+// \S* would swallow the rest of the sentence; the path stops at non-URL chars.
+const PRODUCT_LINK = "(?:https?:\\/\\/)?(?:www\\.)?brypo\\.com(?:\\/[\\w\\-/?=&%#~+]*)?";
+
+/** Links off: take the product link out of a draft. A line that is only the
+ *  link goes; an inline mention becomes "Brypo", which X does not link. */
+export function unlink(text: string): string {
+  const linkLine = new RegExp(`^\\s*${PRODUCT_LINK}\\s*$`, "i");
+  return text
+    .split("\n")
+    .filter((line) => !linkLine.test(line))
+    .join("\n")
+    .replace(new RegExp(PRODUCT_LINK, "gi"), "Brypo")
+    .trim();
 }
 
 // ---- recent-angle ring -----------------------------------------------------
@@ -252,6 +277,8 @@ export interface DraftInputs {
   delta: StatsDelta | null;
   /** Whether today's post may carry the brypo.com/try link. */
   linkOk: boolean;
+  /** Links are off altogether (LINKS_ENABLED false): name no domain at all. */
+  linksOff?: boolean;
   /** Angles used on recent days, newest first. */
   recentAngles: string[];
 }
@@ -320,7 +347,9 @@ export function buildDraftUserMessage(inputs: DraftInputs): string {
     `Today (JST): ${inputs.date}${wd ? ` (${wd})` : ""}`,
     "",
     "Facts — the only numbers that exist:",
-    `- People who have tried brypo.com/try so far: ${inputs.uniqueTryUsers}`,
+    inputs.linksOff
+      ? `- People who have tried the tool so far: ${inputs.uniqueTryUsers}`
+      : `- People who have tried brypo.com/try so far: ${inputs.uniqueTryUsers}`,
     `- Of those, people who came back on a later day: ${inputs.repeatTryUsers}`,
   ];
   const d = inputs.delta;
@@ -331,13 +360,21 @@ export function buildDraftUserMessage(inputs: DraftInputs): string {
         : `- Since the last draft (${d.since}): ${d.newUsers} new ${d.newUsers === 1 ? "person" : "people"} tried it; ${d.newRepeat} more came back.`,
     );
   }
-  lines.push(
-    "- brypo.com/try is free to use; the full product is not open yet (waitlist on brypo.com).",
-    inputs.linkOk
-      ? `- Link today: OK (no link in the last ${LINK_GAP_DAYS} days).`
-      : "- Link today: no — a recent post already had one, so keep this one link-free.",
-    "",
-  );
+  if (inputs.linksOff) {
+    lines.push(
+      "- The full product is not open yet.",
+      "- Links: off — never write brypo.com, a URL or a domain name.",
+      "",
+    );
+  } else {
+    lines.push(
+      "- brypo.com/try is free to use; the full product is not open yet (waitlist on brypo.com).",
+      inputs.linkOk
+        ? `- Link today: OK (no link in the last ${LINK_GAP_DAYS} days).`
+        : "- Link today: no — a recent post already had one, so keep this one link-free.",
+      "",
+    );
+  }
   if (inputs.recentAngles.length > 0) {
     lines.push("Angles used on recent days — choose a different feeling or shape today:");
     for (const angle of inputs.recentAngles) lines.push(`- ${angle}`);

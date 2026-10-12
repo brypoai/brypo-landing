@@ -9,6 +9,8 @@
  * delivery, whichever of today's and tomorrow's send hour is not booked yet —
  * so a single tick at any time of day lands the next noon, however late or
  * rarely GitHub's cron fires (today's, if its hour has passed, goes out now).
+ * The same way, it books the Sunday-evening reminder to record the week on
+ * /ops (remind_hour_jst, 20:00 by default) once it is within ntfy's 3-day limit.
  *
  *   node scripts/post-notify.mjs                       # what the workflow runs
  *   node scripts/post-notify.mjs --fixture f.json      # offline: no token, no network
@@ -38,16 +40,19 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildNotice,
+  buildReminder,
   deliveryDelay,
   isLastChance,
   jstHour,
   parseBlockWords,
   parseConfig,
   parseMode,
+  planReminder,
   planSlots,
   readDraftResponse,
+  remindDelay,
 } from "../functions/api/_postnotify.ts";
-import { alreadyRan, parseLog } from "../functions/api/_postlog.ts";
+import { alreadyRan, parseLog, reminded } from "../functions/api/_postlog.ts";
 import { jstDateKey } from "../functions/api/_lib.ts";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -124,6 +129,50 @@ async function main() {
     return readDraftResponse(date, res.status, res.data);
   }
 
+  /** POST one notification to ntfy (live only). 0 = accepted. */
+  async function sendNtfy(label, payload) {
+    const topic = process.env.NTFY_TOPIC ?? "";
+    if (!topic) {
+      log("live mode but secret not set: NTFY_TOPIC — nothing sent.");
+      return 1;
+    }
+    let res;
+    try {
+      res = await fetch(NTFY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic, ...payload }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (e) {
+      log(`ntfy: ${e?.name ?? "network error"} — nothing sent.`);
+      return 1;
+    }
+    log(`${label}: ntfy HTTP ${res.status}`);
+    if (!res.ok) {
+      let msg = "";
+      try {
+        msg = (await res.json())?.error ?? "";
+      } catch {}
+      log(`ntfy error: ${String(msg).slice(0, 200)}`);
+      return 1;
+    }
+    return 0;
+  }
+
+  /** Record a booking in /api/post-log. A failure after a live send fails the
+   *  run (red): the booking is not marked, so the next tick would send again. */
+  async function record(label, body) {
+    if (!token || fixture) return 0;
+    const rec = await call(cfg, token, "POST", "/api/post-log", body);
+    log(`${label}: post-log write HTTP ${rec.status}`);
+    if (rec.status !== 200 && mode === "live") {
+      log("post-log write failed after a live send — the next tick may send again; check /api/post-log.");
+      return 1;
+    }
+    return 0;
+  }
+
   /** Build, keep a copy, send (live) and record one notification. 0 = ok. */
   async function deliver(date, draft, reason, delay) {
     const notice = buildNotice({ date, draft, reason, cfg, blockWords });
@@ -140,47 +189,31 @@ async function main() {
     writeFileSync(join(OUT_DIR, `${date}.json`), JSON.stringify({ topic: "(NTFY_TOPIC)", ...payload }, null, 2) + "\n");
 
     if (mode === "live") {
-      const topic = process.env.NTFY_TOPIC ?? "";
-      if (!topic) {
-        log("live mode but secret not set: NTFY_TOPIC — nothing sent.");
-        return 1;
-      }
-      let res;
-      try {
-        res = await fetch(NTFY_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topic, ...payload }),
-          signal: AbortSignal.timeout(30_000),
-        });
-      } catch (e) {
-        log(`ntfy: ${e?.name ?? "network error"} — nothing sent.`);
-        return 1;
-      }
-      log(`${date}: ntfy HTTP ${res.status}`);
-      if (!res.ok) {
-        let msg = "";
-        try {
-          msg = (await res.json())?.error ?? "";
-        } catch {}
-        log(`ntfy error: ${String(msg).slice(0, 200)}`);
-        return 1;
-      }
+      if ((await sendNtfy(date, payload)) !== 0) return 1;
     } else {
       log(`${date}: dry_run — nothing sent (config "mode": "live" or Variable POST_NOTIFY_MODE=live to send).`);
     }
+    return record(date, { kind: "send", date, drafts, mode });
+  }
 
-    if (token && !fixture) {
-      const rec = await call(cfg, token, "POST", "/api/post-log", { kind: "send", date, drafts, mode });
-      log(`${date}: post-log write HTTP ${rec.status}`);
-      if (rec.status !== 200 && mode === "live") {
-        // Sent (or scheduled) but not marked as booked, so the next tick would
-        // send it again. Fail the run so it shows red.
-        log("post-log write failed after a live send — the next tick may send again; check /api/post-log.");
-        return 1;
-      }
+  /** The Sunday reminder: book (or send), keep a copy, record. 0 = ok. */
+  async function remind(slot) {
+    const label = `${slot.week} reminder`;
+    const delay = slot.late ? null : remindDelay(nowMs, slot.week, cfg);
+    log(delay ? `${label}: scheduled for ${cfg.remind_hour_jst}:00 JST (ntfy delay)` : `${label}: now`);
+    const notice = buildReminder(slot.week, cfg);
+    const payload = delay ? { ...notice, delay } : notice;
+    mkdirSync(OUT_DIR, { recursive: true });
+    writeFileSync(
+      join(OUT_DIR, `remind-${slot.week}.json`),
+      JSON.stringify({ topic: "(NTFY_TOPIC)", ...payload }, null, 2) + "\n",
+    );
+    if (mode === "live") {
+      if ((await sendNtfy(label, payload)) !== 0) return 1;
+    } else {
+      log(`${label}: dry_run — nothing sent.`);
     }
-    return 0;
+    return record(label, { kind: "remind", week: slot.week, mode });
   }
 
   // A forced run (workflow_dispatch "force", or by hand): today's draft, now.
@@ -189,8 +222,11 @@ async function main() {
     return deliver(today, draft ?? null, reason ?? null, null);
   }
 
-  // A normal tick: book whatever of today/tomorrow is not booked yet.
+  // A normal tick: book whatever of today/tomorrow is not booked yet, and the
+  // Sunday reminder once it is within ntfy's reach.
   let isBooked = () => false;
+  let isReminded = () => false;
+  let canRecordReminder = true;
   if (token && !fixture) {
     const got = await call(cfg, token, "GET", "/api/post-log");
     if (got.status === 401) {
@@ -200,6 +236,10 @@ async function main() {
     if (got.status === 200) {
       const booked = parseLog(JSON.stringify(got.data?.log ?? null));
       isBooked = (d) => alreadyRan(booked, d, mode);
+      isReminded = (w) => reminded(booked, w, mode);
+      // A server that predates reminders (a tick between a merge and its
+      // deploy) cannot record one, and the next tick would send it again.
+      canRecordReminder = typeof got.data?.log?.reminds === "object" && got.data.log.reminds !== null;
     } else if (mode === "live") {
       // Without the log we cannot tell what is already booked; ntfy has no
       // idempotency key, so fail closed rather than notify on every tick.
@@ -209,10 +249,7 @@ async function main() {
   }
 
   const slots = planSlots(nowMs, today, cfg, isBooked);
-  if (slots.length === 0) {
-    log("today and tomorrow are both booked — nothing to do.");
-    return 0;
-  }
+  if (slots.length === 0) log("today and tomorrow are both booked.");
   let failed = false;
   for (const slot of slots) {
     const { draft, reason } = await getDraft(slot.date);
@@ -223,6 +260,13 @@ async function main() {
     }
     const delay = slot.late ? null : deliveryDelay(nowMs, slot.date, cfg);
     if ((await deliver(slot.date, draft ?? null, reason ?? null, delay)) !== 0) failed = true;
+  }
+
+  const reminder = planReminder(nowMs, today, cfg, isReminded);
+  if (reminder && !canRecordReminder) {
+    log(`${reminder.week} reminder: /api/post-log cannot record it yet (deploy not live?) — will retry on a later tick.`);
+  } else if (reminder && (await remind(reminder)) !== 0) {
+    failed = true;
   }
   return failed ? 1 : 0;
 }

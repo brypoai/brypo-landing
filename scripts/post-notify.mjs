@@ -45,6 +45,7 @@ import {
   parseConfig,
   parseMode,
   planSlots,
+  readDraftResponse,
 } from "../functions/api/_postnotify.ts";
 import { alreadyRan, parseLog } from "../functions/api/_postlog.ts";
 import { jstDateKey } from "../functions/api/_lib.ts";
@@ -120,10 +121,7 @@ async function main() {
     if (!token) return { reason: "PUBLISH_TOKEN 未設定のため文案を取得していません（dry-run の見本）" };
     const res = await call(cfg, token, "GET", `/api/post-draft?date=${date}`);
     log(`${date}: post-draft HTTP ${res.status}${res.data?.cached ? " (cached)" : ""}`);
-    if (res.status === 200 && typeof res.data?.text === "string" && res.data.text) {
-      return { draft: { text: res.data.text, angle: String(res.data.angle ?? "") } };
-    }
-    return { reason: res.data?.reason || res.data?.error || (res.status ? `HTTP ${res.status}` : "接続できませんでした") };
+    return readDraftResponse(date, res.status, res.data);
   }
 
   /** Build, keep a copy, send (live) and record one notification. 0 = ok. */

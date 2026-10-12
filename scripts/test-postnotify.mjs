@@ -31,6 +31,7 @@ import {
   parseConfig,
   parseMode,
   planSlots,
+  readDraftResponse,
   sendInstant,
 } from "../functions/api/_postnotify.ts";
 import {
@@ -275,6 +276,23 @@ t("notice: Sunday adds the weekly-record button, weekdays do not", () => {
   assert(sun.message.includes("今週の投稿数"), "sunday text");
   assert(sun.actions.length <= 3, "still ≤ 3 actions");
   assert(!mon.actions.some((a) => a.url.endsWith("#weekly")), "monday");
+});
+t("post-draft answer: the asked day's draft is used; another day's never is", () => {
+  const ok = { date: "2026-10-13", text: DRAFT.text, angle: DRAFT.angle, cached: false };
+  eq(readDraftResponse("2026-10-13", 200, ok), { draft: { text: DRAFT.text, angle: DRAFT.angle } });
+  // A server that predates ?date= (tick between merge and deploy) answers for today.
+  const stale = readDraftResponse("2026-10-13", 200, { ...ok, date: "2026-10-12", cached: true });
+  assert("reason" in stale && stale.reason.includes("2026-10-12"), JSON.stringify(stale));
+});
+t("post-draft answer: no draft → the server's reason, else the HTTP status", () => {
+  eq(readDraftResponse("2026-10-13", 200, { date: "2026-10-13", text: null, reason: "今日の予算上限に達しました" }), {
+    reason: "今日の予算上限に達しました",
+  });
+  eq(readDraftResponse("2026-10-14", 400, { error: "date must be today or tomorrow", code: "bad_date" }), {
+    reason: "date must be today or tomorrow",
+  });
+  eq(readDraftResponse("2026-10-13", 502, null), { reason: "HTTP 502" });
+  eq(readDraftResponse("2026-10-13", 0, null), { reason: "接続できませんでした" });
 });
 
 // ---- _postlog ---------------------------------------------------------------

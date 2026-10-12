@@ -6,7 +6,8 @@
 // No I/O, no env; unit-tested by scripts/test-postnotify.mjs.
 //
 // What this file decides:
-//   - schedule: should this hourly tick send? (send hour from the config file)
+//   - schedule: which of today's / tomorrow's send hours this tick books
+//               (send hour from the config file)
 //   - guard:    does the draft contain something that must never be posted
 //               (prices / paid-plan talk / affiliate links / contact details,
 //               plus owner-supplied words such as an employer name)? A hit
@@ -172,6 +173,26 @@ export function guardHits(text: string, blockWords: string[] = []): string[] {
 export interface DraftIn {
   text: string;
   angle: string;
+}
+
+/**
+ * What a GET /api/post-draft?date=<date> answer means for `date`: the draft,
+ * or why there is none. A server that predates ?date= — e.g. a tick that runs
+ * between a merge and its Cloudflare deploy — answers with today's draft
+ * whatever was asked; that is not `date`'s draft, so it is never booked for it.
+ */
+export function readDraftResponse(
+  date: string,
+  status: number,
+  data: { date?: unknown; text?: unknown; angle?: unknown; reason?: unknown; error?: unknown } | null,
+): { draft: DraftIn } | { reason: string } {
+  if (status === 200 && typeof data?.date === "string" && data.date !== date) {
+    return { reason: `別の日（${data.date}）の文案が返りました（サーバーの更新待ち）` };
+  }
+  if (status === 200 && typeof data?.text === "string" && data.text) {
+    return { draft: { text: data.text, angle: String(data.angle ?? "") } };
+  }
+  return { reason: String(data?.reason || data?.error || (status ? `HTTP ${status}` : "接続できませんでした")) };
 }
 
 /** One ntfy action button (https://docs.ntfy.sh/publish/#action-buttons). */

@@ -38,8 +38,8 @@ scripts/
   test-publish.mjs              _publish.ts / _lib.ts の unit テスト
   test-xreply.mjs               _xreply.ts の unit テスト（ガードレール24ケース）
   test-postnotify.mjs           文案通知の unit テスト（_xtext / _postnotify / _postlog / post-notify.mjs の dry-run）
-  post-notify.mjs               毎日の投稿文案通知（ntfy の予約配信で定時に届く・Actions post-notify.yml が15分おきに実行）
-  post-notify.config.json       通知時刻（send_hour_jst・JST）・準備の前倒し（lead_hours）・既定モード（mode）
+  post-notify.mjs               毎日の投稿文案通知（今日・明日の未予約分を ntfy に予約＝定時に届く・Actions post-notify.yml が15分おきに実行）
+  post-notify.config.json       通知時刻（send_hour_jst・JST）・既定モード（mode）
 robots.txt / sitemap.xml / favicon* / og-image*   静的アセット
 ```
 

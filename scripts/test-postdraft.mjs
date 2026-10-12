@@ -30,10 +30,12 @@ import {
   draftKey,
   linkAllowed,
   mentionsLink,
+  nextDate,
   nextRecent,
   parseRecent,
   parseSnapshot,
   statsDelta,
+  targetDate,
   toPostDraft,
   weekdayJa,
 } from "../functions/api/_postdraft.ts";
@@ -92,6 +94,24 @@ t("daysUntil counts whole days and floors at zero", () => {
   eq(daysUntil("2026-09-07", "2026-09-07"), 0);
   eq(daysUntil("2026-09-30", "2026-09-07"), 0, "past the date");
   eq(daysUntil("garbage", "2026-09-07"), 0, "unparseable input");
+});
+t("targetDate: ?date= may name today or tomorrow (post-notify books a day ahead)", () => {
+  eq(nextDate("2026-10-12"), "2026-10-13");
+  eq(nextDate("2026-10-31"), "2026-11-01", "month end");
+  eq(targetDate(null, "2026-10-12"), "2026-10-12", "absent → today");
+  eq(targetDate("", "2026-10-12"), "2026-10-12", "empty → today");
+  eq(targetDate("2026-10-12", "2026-10-12"), "2026-10-12");
+  eq(targetDate("2026-10-13", "2026-10-12"), "2026-10-13", "tomorrow");
+  eq(targetDate("2026-10-14", "2026-10-12"), null, "two days ahead refused");
+  eq(targetDate("2026-10-11", "2026-10-12"), null, "past refused");
+  eq(targetDate("garbage", "2026-10-12"), null);
+});
+t("a draft made a day ahead still gets its own day's delta and weekday", () => {
+  // Today's draft (10-12) left a snapshot; tomorrow's draft, made later today,
+  // reports the change since then and is written for Tuesday.
+  const prev = { date: "2026-10-12", unique: 1, repeat: 0 };
+  eq(statsDelta(prev, 2, 0, "2026-10-13"), { since: "2026-10-12", newUsers: 1, newRepeat: 0 });
+  eq(weekdayJa("2026-10-13"), "火");
 });
 t("weekdayJa names the JST weekday so the model never computes it", () => {
   eq(weekdayJa("2026-10-11"), "日");

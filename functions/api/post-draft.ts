@@ -34,6 +34,7 @@ import {
   parseRecent,
   parseSnapshot,
   statsDelta,
+  targetDate,
   toPostDraft,
 } from "./_postdraft";
 import type { PostDraft } from "./_postdraft";
@@ -157,7 +158,12 @@ async function handleGet(context: PagesContext): Promise<Response> {
   }
 
   const now = new Date();
-  const date = jstDateKey(now);
+  // The day the draft is for (?date=): today by default; post-notify asks for
+  // tomorrow's when it books the next noon a day ahead.
+  const date = targetDate(new URL(request.url).searchParams.get("date"), jstDateKey(now));
+  if (date === null) {
+    return json({ error: "date must be today or tomorrow (JST, YYYY-MM-DD).", code: "bad_date" }, 400);
+  }
   const kv = env.TRY_KV;
 
   if (!kv) {
